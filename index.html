@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Local OpenSCAD Studio</title>
+    <link rel="icon" href="data:,"> 
+    <style>
+        body { margin: 0; display: flex; height: 100vh; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #181818; overflow: hidden; color: #e5e7eb; }
+        
+        #left-pane { width: 40%; display: flex; flex-direction: column; z-index: 5; min-width: 0; transition: width 0.2s ease-out; }
+        #left-pane.collapsed { width: 0 !important; overflow: hidden; border: none; }
+        
+        #editor-toolbar {
+            display: flex; align-items: center; justify-content: space-between;
+            background: #141414; padding: 8px 12px; border-bottom: 1px solid #2a2a2a;
+        }
+        .editor-tools { display: flex; gap: 6px; }
+        .editor-btn {
+            background: transparent; border: 1px solid transparent; color: #9ca3af;
+            border-radius: 4px; padding: 4px 8px; cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 11px;
+            transition: all 0.15s;
+        }
+        .editor-btn:hover { background: #222; color: #fff; border-color: #444; }
+        .editor-btn svg { width: 14px; height: 14px; }
+        #save-status { color: #10b981; font-size: 11px; font-family: monospace; opacity: 0; transition: opacity 0.5s; display: flex; align-items: center; gap: 4px; }
+        
+        #resizer { 
+            width: 6px; background: #2a2a2a; cursor: col-resize; z-index: 15; 
+            display: flex; align-items: center; justify-content: center; transition: background 0.2s;
+            border-left: 1px solid #111; border-right: 1px solid #111;
+        }
+        #resizer:hover, #resizer.active { background: #3b82f6; }
+        #resizer::after { content: "⋮"; color: #666; font-size: 18px; }
+        
+        #editor-container { flex: 1; position: relative; min-width: 0; }
+        #console-container { 
+            height: 220px; background: #141414; color: #a1a1aa; 
+            font-family: 'JetBrains Mono', 'Courier New', Courier, monospace; font-size: 12px;
+            padding: 12px; overflow-y: auto; border-top: 1px solid #333; min-width: 0;
+        }
+        .log-error { color: #ef4444; }
+        .log-success { color: #10b981; }
+        
+        #preview-container { flex: 1; position: relative; background: #1e1e1e; display: flex; min-width: 0; }
+        #canvas-wrapper { flex: 1; position: relative; min-width: 0; overflow: hidden; }
+        
+        #drag-overlay {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 50;
+            background: rgba(16, 185, 129, 0.1); backdrop-filter: blur(8px);
+            display: flex; align-items: center; justify-content: center;
+            border: 4px dashed #10b981; pointer-events: none; opacity: 0; transition: opacity 0.2s;
+        }
+        #drag-overlay.active { opacity: 1; }
+        #drag-overlay h2 { color: #10b981; font-size: 24px; padding: 20px 40px; background: rgba(0,0,0,0.6); border-radius: 12px; }
+
+        .canvas-btn {
+            position: absolute; z-index: 10; background: rgba(30,30,32,0.8); border: 1px solid #444; 
+            color: #ccc; padding: 8px; border-radius: 6px; cursor: pointer; transition: all 0.2s;
+            display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);
+        }
+        .canvas-btn:hover { background: #333; color: #fff; border-color: #555; }
+        #btn-toggle-editor { top: 20px; left: 20px; }
+        
+        #camera-presets {
+            position: absolute; bottom: 20px; left: 20px; z-index: 10; width: 180px;
+            background: rgba(30,30,32,0.8); backdrop-filter: blur(4px); border: 1px solid #444;
+        }
+
+        #zoom-slider-container {
+            position: absolute; right: -56px; top: 50%; transform: translateY(-50%) rotate(-90deg);
+            z-index: 10; width: 180px; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+            background: rgba(30,30,32,0.8); padding: 8px 14px; border-radius: 12px; border: 1px solid #444;
+            backdrop-filter: blur(4px); box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        #zoom-slider-container input[type="range"] { flex: 1; cursor: pointer; accent-color: #3b82f6; margin: 0; }
+        .zoom-icon { color: #d1d5db; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; transform: rotate(90deg); user-select: none; }
+
+        #right-panel {
+            width: 280px; min-width: 280px; background: #222225; border-left: 1px solid #333;
+            display: flex; flex-direction: column; padding: 16px; box-sizing: border-box;
+            z-index: 10; box-shadow: -4px 0 15px rgba(0,0,0,0.2); overflow-y: auto;
+        }
+        
+        .panel-section { margin-bottom: 24px; }
+        .panel-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #9ca3af; margin-bottom: 12px; font-weight: 600; }
+        
+        .tool-row { display: flex; gap: 8px; margin-bottom: 16px; }
+        .segmented-control { display: flex; background: #141414; border-radius: 6px; padding: 2px; border: 1px solid #333; flex: 1; }
+        .segmented-control button {
+            flex: 1; background: transparent; border: none; color: #9ca3af; padding: 6px 0;
+            border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: all 0.15s ease; font-size: 12px; font-weight: 500;
+        }
+        .segmented-control button:hover { color: #fff; }
+        .segmented-control button.active { background: #3b82f6; color: white; }
+        .segmented-control button svg { width: 16px; height: 16px; pointer-events: none; }
+        
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type="number"] { -moz-appearance: textfield; }
+
+        .input-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+        .scrub-label { font-size: 12px; color: #d1d5db; display: flex; align-items: center; gap: 6px; cursor: ew-resize; user-select: none; padding: 2px 0;}
+        .scrub-label:hover { color: #fff; }
+        
+        .input-row input[type="number"] {
+            width: 75px; background: #1a1a1a; border: 1px solid #444; color: #fff;
+            padding: 6px 8px; border-radius: 4px; font-size: 12px; font-family: monospace;
+            text-align: right; outline: none; transition: border-color 0.2s;
+        }
+        .input-row input[type="number"]:focus { border-color: #3b82f6; background: #222; }
+        
+        .toggle-row { display: flex; align-items: center; justify-content: space-between; font-size: 12px; margin-bottom: 12px; color: #d1d5db; }
+        .toggle-row select { background: #141414; border: 1px solid #444; color: #fff; padding: 4px 6px; border-radius: 4px; outline: none; font-size: 12px; width: 120px; }
+        
+        input[type="color"] {
+            -webkit-appearance: none; border: none; width: 100%; height: 32px; 
+            border-radius: 4px; cursor: pointer; background: transparent; padding: 0;
+        }
+        input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+        input[type="color"]::-webkit-color-swatch { border: 1px solid #444; border-radius: 4px; }
+
+        .action-btn { 
+            width: 100%; background: #374151; border: 1px solid #4b5563; color: #e5e7eb;
+            padding: 8px 0; border-radius: 6px; font-weight: 500; font-size: 13px; cursor: pointer;
+            transition: all 0.15s ease; margin-bottom: 8px; display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .action-btn:hover { background: #4b5563; }
+        .action-btn.primary { background: #10b981; border-color: #059669; color: #fff; }
+        .action-btn.primary:hover { background: #059669; }
+
+        #version-badge { text-align: center; color: #6b7280; font-family: monospace; font-size: 11px; margin-top: auto; }
+        #loading { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); color: #10b981; font-family: monospace; font-size: 13px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 6px; z-index: 10; display: none; }
+    </style>
+    
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+</head>
+<body>
+    <div id="drag-overlay"><h2>Drop .scad file here</h2></div>
+    
+    <div id="left-pane">
+        <div id="editor-toolbar">
+            <div class="editor-tools">
+                <button class="editor-btn" id="btn-undo" title="Undo (Ctrl+Z)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"></path><path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"></path></svg> Undo
+                </button>
+                <button class="editor-btn" id="btn-redo" title="Redo (Ctrl+Y)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 7v6h-6"></path><path d="M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.7"></path></svg> Redo
+                </button>
+                <div style="width: 1px; height: 14px; background: #333; margin: 0 4px;"></div>
+                <button class="editor-btn" id="btn-clear" title="Clear Editor">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path></svg> Clear
+                </button>
+            </div>
+            <div id="save-status">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg> Saved
+            </div>
+        </div>
+        
+        <div id="editor-container"></div>
+        <div id="console-container">OpenSCAD Studio v19 Initialized...</div>
+    </div>
+    
+    <div id="resizer"></div>
+    
+    <div id="preview-container">
+        <div id="canvas-wrapper">
+            <div id="loading">Compiling...</div>
+            <button id="btn-toggle-editor" class="canvas-btn" title="Toggle Code Editor">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>
+            </button>
+            
+            <div id="camera-presets" class="segmented-control">
+                <button id="btn-cam-lens" title="Toggle Orthographic / Perspective" style="border-right: 1px solid #333; border-radius: 4px 0 0 4px; padding: 0 4px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg>
+                </button>
+                <button id="btn-cam-top" title="Top View">Top</button>
+                <button id="btn-cam-front" title="Front View">Front</button>
+                <button id="btn-cam-iso" class="active" title="Isometric View">Iso</button>
+            </div>
+            
+            <div id="zoom-slider-container">
+                <div class="zoom-icon" title="Zoom Out">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                </div>
+                <input type="range" id="zoom-slider" min="20" max="400" value="160">
+                <div class="zoom-icon" title="Zoom In">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                </div>
+            </div>
+        </div>
+        
+        <div id="right-panel">
+            <div class="panel-section">
+                <div class="panel-title">Transform</div>
+                
+                <div class="tool-row">
+                    <div class="segmented-control">
+                        <button id="btn-mode-translate" class="gizmo-btn active" title="Move (T)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="5 9 2 12 5 15"></polyline><polyline points="9 5 12 2 15 5"></polyline><polyline points="19 9 22 12 19 15"></polyline><polyline points="9 19 12 22 15 19"></polyline><line x1="2" y1="12" x2="22" y2="12"></line><line x1="12" y1="2" x2="12" y2="22"></line></svg>
+                        </button>
+                        <button id="btn-mode-rotate" class="gizmo-btn" title="Rotate (R)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                        </button>
+                        <button id="btn-mode-scale" class="gizmo-btn" title="Scale (S)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 3l-6 6"></path><path d="M21 3v6"></path><path d="M21 3h-6"></path><path d="M14 14l-4 4"></path><path d="M14 18v-4"></path><path d="M14 14h-4"></path><rect x="3" y="14" width="7" height="7" rx="1"></rect></svg>
+                        </button>
+                    </div>
+                    <button id="btn-center-mesh" class="action-btn" style="width: auto; padding: 0 12px; margin: 0;" title="Center on Bed">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+                    </button>
+                </div>
+
+                <div class="toggle-row">
+                    <span>Units</span>
+                    <select id="unit-select">
+                        <option value="mm">Millimeters</option>
+                        <option value="in">Inches</option>
+                    </select>
+                </div>
+                <div class="toggle-row">
+                    <span>Uniform Scale</span>
+                    <input type="checkbox" id="uniform-scale" checked>
+                </div>
+
+                <div class="input-row">
+                    <label class="scrub-label" data-target="dim-x" title="Drag to adjust"><span style="color: #f87171;">X</span> Size</label>
+                    <input type="number" id="dim-x" step="0.1" value="0.00">
+                </div>
+                <div class="input-row">
+                    <label class="scrub-label" data-target="dim-y" title="Drag to adjust"><span style="color: #34d399;">Y</span> Size</label>
+                    <input type="number" id="dim-y" step="0.1" value="0.00">
+                </div>
+                <div class="input-row">
+                    <label class="scrub-label" data-target="dim-z" title="Drag to adjust"><span style="color: #60a5fa;">Z</span> Size</label>
+                    <input type="number" id="dim-z" step="0.1" value="0.00">
+                </div>
+            </div>
+
+            <div class="panel-section">
+                <div class="panel-title">Appearance</div>
+                
+                <div class="toggle-row" style="margin-bottom: 12px;">
+                    <span>Printer Profile</span>
+                    <select id="printer-profile">
+                        <option value="256,256,256">Bambu P1/X1 (256³)</option>
+                        <option value="250,210,220">Prusa MK4 (250x210x220)</option>
+                        <option value="350,350,350">Voron v2.4 (350³)</option>
+                        <option value="180,180,180">Prusa Mini (180³)</option>
+                    </select>
+                </div>
+                
+                <input type="color" id="model-color" value="#cbd5e1" title="Material Color">
+                
+                <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
+                    <label style="font-size: 12px; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="toggle-bounds"> Show Bounding Box
+                    </label>
+                    <label style="font-size: 12px; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="toggle-print-volume"> Show Print Volume
+                    </label>
+                    <label style="font-size: 12px; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="toggle-grid-numbers" checked> Show Grid Numbers
+                    </label>
+                </div>
+                
+                <div class="input-row" style="margin-top: 12px;">
+                    <label class="scrub-label" data-target="grid-size" title="Drag to adjust">Grid Cell</label>
+                    <input type="number" id="grid-size" step="1" value="10" min="1">
+                </div>
+            </div>
+
+            <div class="panel-section" style="margin-top: auto; margin-bottom: 0;">
+                <div class="panel-title">Export</div>
+                <button id="btn-export-stl" class="action-btn">Export STL (Layout)</button>
+                <button id="btn-export-3mf" class="action-btn primary">Export 3MF (Parametric)</button>
+            </div>
+            
+            <div id="version-badge">v19.0.0</div>
+        </div>
+    </div>
+    
+    <script type="module" src="app.js?v=19"></script>
+</body>
+</html>
