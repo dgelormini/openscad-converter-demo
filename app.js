@@ -36,10 +36,10 @@ const saveStatus = document.getElementById('save-status');
 // --- 1. Three.js Scene Setup ---
 const scene = new THREE.Scene();
 
-let cameraPersp = new THREE.PerspectiveCamera(45, wrapper.clientWidth / wrapper.clientHeight, 0.1, 2000);
-let cameraOrtho = new THREE.OrthographicCamera(wrapper.clientWidth / -4, wrapper.clientWidth / 4, wrapper.clientHeight / 4, wrapper.clientHeight / -4, 0.1, 2000);
+let cameraPersp = new THREE.PerspectiveCamera(45, wrapper.clientWidth / wrapper.clientHeight, 0.1, 3000);
+let cameraOrtho = new THREE.OrthographicCamera(wrapper.clientWidth / -4, wrapper.clientWidth / 4, wrapper.clientHeight / 4, wrapper.clientHeight / -4, 0.1, 3000);
 let camera = cameraPersp;
-camera.position.set(160, 140, 160);
+camera.position.set(220, 200, 220);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setSize(wrapper.clientWidth, wrapper.clientHeight);
@@ -49,34 +49,77 @@ wrapper.appendChild(renderer.domElement);
 
 const orbit = new OrbitControls(camera, renderer.domElement);
 orbit.enableDamping = true;
-orbit.dampingFactor = 0.05;
+orbit.dampingFactor = 0.08;
 orbit.maxPolarAngle = Math.PI / 2 + 0.02; 
-orbit.zoomSpeed = 2.5; 
-orbit.target.set(0, 15, 0);
+orbit.zoomSpeed = 1.2; 
+orbit.minDistance = 25;
+orbit.maxDistance = 1400;
+orbit.target.set(0, 20, 0);
 
-// Camera Logic
-function syncZoomSlider() { zoomSlider.value = 420 - camera.position.distanceTo(orbit.target); }
+// Camera & Zoom Logic
+const MIN_DIST = 25;
+const MAX_DIST = 1400;
+let isDraggingZoomSlider = false;
+
+zoomSlider.addEventListener('mousedown', () => { isDraggingZoomSlider = true; });
+zoomSlider.addEventListener('touchstart', () => { isDraggingZoomSlider = true; }, { passive: true });
+window.addEventListener('mouseup', () => { isDraggingZoomSlider = false; });
+window.addEventListener('touchend', () => { isDraggingZoomSlider = false; });
+
+function syncZoomSlider() {
+    if (isDraggingZoomSlider) return;
+    let dist;
+    if (camera.isOrthographicCamera) {
+        dist = 220 / Math.max(camera.zoom, 0.01);
+    } else {
+        dist = camera.position.distanceTo(orbit.target);
+    }
+    dist = Math.min(Math.max(dist, MIN_DIST), MAX_DIST);
+    // Logarithmic scale: slider 100 = close (MIN_DIST), slider 0 = far (MAX_DIST)
+    const val = 100 - 100 * (Math.log(dist / MIN_DIST) / Math.log(MAX_DIST / MIN_DIST));
+    zoomSlider.value = Math.min(Math.max(val, 0), 100);
+}
 orbit.addEventListener('change', syncZoomSlider);
-zoomSlider.addEventListener('input', (e) => {
-    const targetDistance = 420 - parseFloat(e.target.value);
+
+function setZoomFromSlider(sliderVal) {
+    const clampedVal = Math.min(Math.max(parseFloat(sliderVal), 0), 100);
+    const targetDistance = MIN_DIST * Math.pow(MAX_DIST / MIN_DIST, (100 - clampedVal) / 100);
+    
     const direction = new THREE.Vector3().subVectors(camera.position, orbit.target).normalize();
+    if (direction.lengthSq() === 0) direction.set(1, 0.85, 1).normalize();
     camera.position.copy(orbit.target).add(direction.multiplyScalar(targetDistance));
     
     if (camera.isOrthographicCamera) {
-        camera.zoom = 250 / targetDistance;
+        camera.zoom = 220 / targetDistance;
         camera.updateProjectionMatrix();
     }
     orbit.update();
+}
+
+zoomSlider.addEventListener('input', (e) => setZoomFromSlider(e.target.value));
+
+document.getElementById('btn-zoom-in')?.addEventListener('click', () => {
+    const currentVal = parseFloat(zoomSlider.value);
+    const newVal = Math.min(currentVal + 12, 100);
+    zoomSlider.value = newVal;
+    setZoomFromSlider(newVal);
+});
+
+document.getElementById('btn-zoom-out')?.addEventListener('click', () => {
+    const currentVal = parseFloat(zoomSlider.value);
+    const newVal = Math.max(currentVal - 12, 0);
+    zoomSlider.value = newVal;
+    setZoomFromSlider(newVal);
 });
 
 document.getElementById('btn-cam-lens').addEventListener('click', () => {
     const currentPos = camera.position.clone();
     const currentTarget = orbit.target.clone();
+    const dist = currentPos.distanceTo(currentTarget);
     
     if (camera.isPerspectiveCamera) {
         camera = cameraOrtho;
-        const dist = currentPos.distanceTo(currentTarget);
-        camera.zoom = 250 / dist;
+        camera.zoom = 220 / Math.max(dist, 10);
     } else {
         camera = cameraPersp;
     }
@@ -90,23 +133,60 @@ document.getElementById('btn-cam-lens').addEventListener('click', () => {
     
     transformControl.camera = camera;
     document.getElementById('btn-cam-lens').style.color = camera.isOrthographicCamera ? '#3b82f6' : '#9ca3af';
+    syncZoomSlider();
 });
 
 function setCameraPreset(x, y, z, tx, ty, tz, btnId) {
     camera.position.set(x, y, z);
     orbit.target.set(tx, ty, tz);
     if (camera.isOrthographicCamera) {
-        camera.zoom = 1;
+        const dist = camera.position.distanceTo(orbit.target);
+        camera.zoom = 220 / dist;
         camera.updateProjectionMatrix();
     }
     orbit.update();
     syncZoomSlider();
     document.querySelectorAll('#camera-presets button:not(#btn-cam-lens)').forEach(b => b.classList.remove('active'));
-    document.getElementById(btnId).classList.add('active');
+    if (btnId) document.getElementById(btnId)?.classList.add('active');
 }
-document.getElementById('btn-cam-top').addEventListener('click', () => setCameraPreset(0, 250, 0, 0, 0, 0, 'btn-cam-top'));
-document.getElementById('btn-cam-front').addEventListener('click', () => setCameraPreset(0, 15, 250, 0, 15, 0, 'btn-cam-front'));
-document.getElementById('btn-cam-iso').addEventListener('click', () => setCameraPreset(160, 140, 160, 0, 15, 0, 'btn-cam-iso'));
+
+function fitCameraToObject() {
+    const targetBox = new THREE.Box3();
+    if (currentMesh && currentMesh.geometry) {
+        targetBox.setFromObject(currentMesh);
+    } else {
+        targetBox.setFromCenterAndSize(new THREE.Vector3(0, 0, 0), new THREE.Vector3(printX, 20, printY));
+    }
+    
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    targetBox.getSize(size);
+    targetBox.getCenter(center);
+    
+    const maxDim = Math.max(size.x, size.y, size.z, 60);
+    const fov = cameraPersp.fov * (Math.PI / 180);
+    let cameraDistance = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.8;
+    cameraDistance = Math.max(cameraDistance, 140);
+    
+    orbit.target.copy(center);
+    
+    const dir = new THREE.Vector3(1, 0.85, 1).normalize();
+    camera.position.copy(center).add(dir.multiplyScalar(cameraDistance));
+    
+    if (camera.isOrthographicCamera) {
+        camera.zoom = 220 / cameraDistance;
+        camera.updateProjectionMatrix();
+    }
+    orbit.update();
+    syncZoomSlider();
+    document.querySelectorAll('#camera-presets button:not(#btn-cam-lens)').forEach(b => b.classList.remove('active'));
+    document.getElementById('btn-cam-fit')?.classList.add('active');
+}
+
+document.getElementById('btn-cam-fit')?.addEventListener('click', fitCameraToObject);
+document.getElementById('btn-cam-top').addEventListener('click', () => setCameraPreset(0, 360, 0, 0, 0, 0, 'btn-cam-top'));
+document.getElementById('btn-cam-front').addEventListener('click', () => setCameraPreset(0, 25, 360, 0, 25, 0, 'btn-cam-front'));
+document.getElementById('btn-cam-iso').addEventListener('click', () => setCameraPreset(220, 200, 220, 0, 25, 0, 'btn-cam-iso'));
 
 
 // --- 2. Professional Gizmos ---
@@ -613,6 +693,7 @@ window.addEventListener('keydown', (e) => {
     if (e.key.toLowerCase() === 'r') setGizmoMode('rotate', 'btn-mode-rotate');
     if (e.key.toLowerCase() === 's') setGizmoMode('scale', 'btn-mode-scale');
     if (e.key.toLowerCase() === 'c') centerMeshOnBed(e.shiftKey);
+    if (e.key.toLowerCase() === 'f') fitCameraToObject();
 });
 
 colorPicker.addEventListener('input', (e) => {
@@ -677,10 +758,13 @@ require(['vs/editor/editor.main'], function() {
     
     const LOCAL_STORAGE_KEY = 'openscad-studio-saved-code';
     const savedCode = localStorage.getItem(LOCAL_STORAGE_KEY);
-    const defaultCode = `// Drag & Drop a local .scad file to load it instantly.\n$fn=50;\n\ndifference() {\n    cube([40, 40, 20], center=true);\n    sphere(22);\n}`;
+    const defaultCode = `// Parametric Twisted Hex Cup\n// Drag & Drop a local .scad file to load it instantly.\n\nheight = 45;\nradius = 24;\nwall = 2.5;\ntwist_deg = 90;\nsides = 6;\n\n$fn = 60;\neps = 0.01; // Microscopic overlap to prevent manifold errors\n\nunion() {\n    // 1. Solid floor\n    cylinder(h = wall + eps, r = radius, $fn = sides);\n\n    // 2. Hollow twisted walls\n    translate([0, 0, wall])\n        linear_extrude(height = height - wall, twist = twist_deg, slices = 60)\n            difference() {\n                circle(r = radius, $fn = sides);\n                circle(r = radius - wall, $fn = sides);\n            }\n}`;
+
+    const oldDefaultPattern = 'difference() {\n    cube([40, 40, 20], center=true);';
+    const initialCode = (savedCode === null || savedCode.includes(oldDefaultPattern)) ? defaultCode : savedCode;
 
     editor = monaco.editor.create(document.getElementById('editor-container'), {
-        value: savedCode !== null ? savedCode : defaultCode,
+        value: initialCode,
         language: 'cpp', theme: 'vs-dark', minimap: { enabled: false }, fontSize: 14
     });
 

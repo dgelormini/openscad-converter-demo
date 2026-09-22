@@ -62,7 +62,7 @@
         #btn-toggle-editor { top: 20px; left: 20px; }
 
         #camera-presets {
-            position: absolute; bottom: 20px; left: 20px; z-index: 10; width: 180px;
+            position: absolute; bottom: 20px; left: 20px; z-index: 10; width: 220px;
             background: rgba(30,30,32,0.8); backdrop-filter: blur(4px); border: 1px solid #444;
         }
 
@@ -182,17 +182,18 @@
                 <button id="btn-cam-lens" title="Toggle Orthographic / Perspective" style="border-right: 1px solid #333; border-radius: 4px 0 0 4px; padding: 0 4px;">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg>
                 </button>
+                <button id="btn-cam-fit" title="Zoom to Fit Model (F)">Fit</button>
                 <button id="btn-cam-top" title="Top View">Top</button>
                 <button id="btn-cam-front" title="Front View">Front</button>
                 <button id="btn-cam-iso" class="active" title="Isometric View">Iso</button>
             </div>
 
             <div id="zoom-slider-container">
-                <div class="zoom-icon" title="Zoom Out">
+                <div class="zoom-icon" id="btn-zoom-out" title="Zoom Out (-)" style="cursor: pointer;">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 </div>
-                <input type="range" id="zoom-slider" min="20" max="400" value="160">
-                <div class="zoom-icon" title="Zoom In">
+                <input type="range" id="zoom-slider" min="0" max="100" value="50" step="any">
+                <div class="zoom-icon" id="btn-zoom-in" title="Zoom In (+)" style="cursor: pointer;">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 </div>
             </div>
@@ -284,11 +285,11 @@
                 <button id="btn-export-3mf" class="action-btn" disabled style="opacity: 0.45; cursor: not-allowed;" title="3MF export is coming soon">Export 3MF (Coming Soon)</button>
             </div>
 
-            <div id="version-badge">v21.0.0</div>
+            <div id="version-badge">v23.0.0</div>
         </div>
     </div>
 
-    <script type="module" src="app.js?v=21"></script>
+    <script type="module" src="app.js?v=23"></script>
     <!-- Cloudflare Web Analytics -->
     <script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "e270c300833e45709e88b33c45817f10"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
