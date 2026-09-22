@@ -4,7 +4,7 @@
 [![Zero Install](https://img.shields.io/badge/Runtime-Browser%20WASM-blue?style=for-the-badge&logo=webassembly)](https://dgelormini.github.io/openscad-converter-demo/)
 [![Three.js](https://img.shields.io/badge/3D%20Engine-Three.js-black?style=for-the-badge&logo=three.js)](https://threejs.org/)
 
-A lightweight, modern, client-side web IDE and 3D previewer for **OpenSCAD**. Compile `.scad` scripts directly in your browser with zero installation, manipulate models with 3D interactive gizmos, preview realistic 3D printer build volumes, and export production-ready **STL** and **3MF** files.
+A lightweight, modern, client-side web IDE and 3D previewer for **OpenSCAD**. Compile `.scad` scripts directly in your browser with zero installation, manipulate models with 3D interactive gizmos, preview realistic 3D printer build volumes, and export production-ready **STL** models (with 3MF support coming soon).
 
 🔗 **Live Application:** [https://dgelormini.github.io/openscad-converter-demo/](https://dgelormini.github.io/openscad-converter-demo/)
 
@@ -30,9 +30,9 @@ A lightweight, modern, client-side web IDE and 3D previewer for **OpenSCAD**. Co
   - Perspective and Orthographic camera projection toggles.
   - Quick camera presets: **Top**, **Front**, and **Isometric (Iso)** views.
   - Smooth OrbitControls with distance-synced zoom slider.
-- **📦 Multi-Format Exporters:**
-  - **STL (Visual Layout):** Exports the transformed, positioned, and scaled scene geometry.
-  - **3MF (Parametric):** Bakes transform matrices cleanly into native OpenSCAD scale wrappers.
+- **📦 Exporters:**
+  - **STL (Visual Layout):** Exports clean binary STL of your transformed, positioned, and scaled scene geometry.
+  - **3MF (Parametric):** *(Coming Soon)* Native 3MF baking directly in the browser.
 - **📁 Drag & Drop Loading:** Drop any local `.scad` file directly onto the canvas to load it instantly.
 - **💾 Local Auto-Save:** Automatically persists your code in browser `localStorage` across sessions.
 

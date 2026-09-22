@@ -652,20 +652,24 @@ document.getElementById('btn-export-stl').addEventListener('click', () => {
     transformControl.attach(currentMesh);
 });
 
-document.getElementById('btn-export-3mf').addEventListener('click', () => {
-    if (!currentMesh.geometry || !editor) return;
-    loadingEl.style.display = 'block';
-    loadingEl.innerText = 'Baking 3MF...';
+const btnExport3mf = document.getElementById('btn-export-3mf');
+if (btnExport3mf) {
+    btnExport3mf.addEventListener('click', () => {
+        if (btnExport3mf.disabled) return;
+        if (!currentMesh.geometry || !editor) return;
+        loadingEl.style.display = 'block';
+        loadingEl.innerText = 'Baking 3MF...';
 
-    const sX = currentMesh.scale.x.toFixed(3);
-    const sY = currentMesh.scale.z.toFixed(3); 
-    const sZ = currentMesh.scale.y.toFixed(3);
-    
-    const originalCode = editor.getValue();
-    const parametricCode = `scale([${sX}, ${sY}, ${sZ}]) {\n${originalCode}\n}`;
+        const sX = currentMesh.scale.x.toFixed(3);
+        const sY = currentMesh.scale.z.toFixed(3); 
+        const sZ = currentMesh.scale.y.toFixed(3);
+        
+        const originalCode = editor.getValue();
+        const parametricCode = `scale([${sX}, ${sY}, ${sZ}]) {\n${originalCode}\n}`;
 
-    worker.postMessage({ code: parametricCode, format: '3mf' });
-});
+        worker.postMessage({ code: parametricCode, format: '3mf' });
+    });
+}
 
 // --- Monaco Editor & Initialization ---
 require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }});
