@@ -68,20 +68,6 @@ No Node.js build steps or npm installations are required—the project uses vani
 
 ---
 
-## 🌐 Deploying to GitHub Pages
-
-1. Go to your repository on GitHub: [dgelormini/openscad-converter-demo](https://github.com/dgelormini/openscad-converter-demo) > **Settings** > **Pages**.
-2. Under **Build and deployment > Source**, select:
-   - **Deploy from a branch**
-   - Branch: `main`
-   - Folder: `/ (root)`
-3. Click **Save**. Within 1–2 minutes, your studio will be live at:
-   ```
-   https://dgelormini.github.io/openscad-converter-demo/
-   ```
-
----
-
 ## 🛠️ Tech Stack
 
 - **Editor:** [Monaco Editor](https://microsoft.github.io/monaco-editor/) via Cloudflare CDN
