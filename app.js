@@ -568,6 +568,35 @@ document.getElementById('btn-clear').addEventListener('click', () => {
 });
 
 
+function centerMeshOnBed(resetRotation = false) {
+    if (!currentMesh.geometry) return;
+    
+    if (resetRotation) {
+        currentMesh.rotation.set(0, 0, 0);
+    }
+    
+    // Compute current world-space bounding box
+    const box = new THREE.Box3().setFromObject(currentMesh);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    
+    // Center horizontally on the bed (X and Z = 0)
+    currentMesh.position.x -= center.x;
+    currentMesh.position.z -= center.z;
+    
+    // Align base to bed surface (Y = 0)
+    currentMesh.position.y -= box.min.y;
+    
+    if (boxHelper) boxHelper.update();
+    transformControl.attach(currentMesh);
+    updateUIFromGizmo();
+}
+
+const btnCenterMesh = document.getElementById('btn-center-mesh');
+if (btnCenterMesh) {
+    btnCenterMesh.addEventListener('click', (e) => centerMeshOnBed(e.shiftKey));
+}
+
 function setGizmoMode(mode, btnId) {
     transformControl.setMode(mode);
     document.querySelectorAll('.gizmo-btn').forEach(b => b.classList.remove('active'));
@@ -583,6 +612,7 @@ window.addEventListener('keydown', (e) => {
     if (e.key.toLowerCase() === 't') setGizmoMode('translate', 'btn-mode-translate');
     if (e.key.toLowerCase() === 'r') setGizmoMode('rotate', 'btn-mode-rotate');
     if (e.key.toLowerCase() === 's') setGizmoMode('scale', 'btn-mode-scale');
+    if (e.key.toLowerCase() === 'c') centerMeshOnBed(e.shiftKey);
 });
 
 colorPicker.addEventListener('input', (e) => {
