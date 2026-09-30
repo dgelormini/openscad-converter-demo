@@ -20,10 +20,31 @@ let printX = 256, printY = 256, printZ = 256;
 const wrapper = document.getElementById('canvas-wrapper');
 const consoleEl = document.getElementById('console-container');
 const loadingEl = document.getElementById('loading');
+const loadingText = document.getElementById('loading-text');
+
+function showLoading(msg = 'Compiling Model...') {
+    if (loadingText) loadingText.innerText = msg;
+    if (loadingEl) loadingEl.style.display = 'flex';
+}
+
+function hideLoading() {
+    if (loadingEl) loadingEl.style.display = 'none';
+}
+
 const colorPicker = document.getElementById('model-color');
 const dimX = document.getElementById('dim-x');
 const dimY = document.getElementById('dim-y');
 const dimZ = document.getElementById('dim-z');
+const posX = document.getElementById('pos-x');
+const posY = document.getElementById('pos-y');
+const posZ = document.getElementById('pos-z');
+const rotX = document.getElementById('rot-x');
+const rotY = document.getElementById('rot-y');
+const rotZ = document.getElementById('rot-z');
+const panelTranslate = document.getElementById('controls-translate');
+const panelRotate = document.getElementById('controls-rotate');
+const panelScale = document.getElementById('controls-scale');
+const unitSelectRow = document.getElementById('unit-select-row');
 const unitSelect = document.getElementById('unit-select');
 const uniformScale = document.getElementById('uniform-scale');
 const gridSizeInput = document.getElementById('grid-size');
@@ -484,14 +505,37 @@ window.addEventListener('drop', (e) => {
 // --- 5. Dimension Math & UI Sync ---
 function getMultiplier() { return unitSelect.value === 'in' ? 25.4 : 1; }
 
+function radToDegNorm(rad) {
+    let deg = THREE.MathUtils.radToDeg(rad) % 360;
+    if (deg > 180) deg -= 360;
+    if (deg < -180) deg += 360;
+    return parseFloat(deg.toFixed(1));
+}
+
 function updateUIFromGizmo() {
     if (isUpdatingFromUI || !currentMesh.geometry) return;
-    
-    // Smooth Scale Output: Read the absolute value so negative scales (inside-out) don't break the UI
     const mult = getMultiplier();
-    dimX.value = (Math.abs(baseSize.x * currentMesh.scale.x) / mult).toFixed(2);
-    dimY.value = (Math.abs(baseSize.z * currentMesh.scale.z) / mult).toFixed(2); 
-    dimZ.value = (Math.abs(baseSize.y * currentMesh.scale.y) / mult).toFixed(2);
+    
+    // Scale / Size
+    if (dimX && dimY && dimZ) {
+        dimX.value = (Math.abs(baseSize.x * currentMesh.scale.x) / mult).toFixed(2);
+        dimY.value = (Math.abs(baseSize.z * currentMesh.scale.z) / mult).toFixed(2); 
+        dimZ.value = (Math.abs(baseSize.y * currentMesh.scale.y) / mult).toFixed(2);
+    }
+
+    // Position (CAD X = Three.js X, CAD Y = Three.js Z, CAD Z = Three.js Y)
+    if (posX && posY && posZ) {
+        posX.value = (currentMesh.position.x / mult).toFixed(2);
+        posY.value = (currentMesh.position.z / mult).toFixed(2);
+        posZ.value = (currentMesh.position.y / mult).toFixed(2);
+    }
+
+    // Rotation (degrees)
+    if (rotX && rotY && rotZ) {
+        rotX.value = radToDegNorm(currentMesh.rotation.x).toFixed(1);
+        rotY.value = radToDegNorm(currentMesh.rotation.z).toFixed(1);
+        rotZ.value = radToDegNorm(currentMesh.rotation.y).toFixed(1);
+    }
     
     if (boxHelper) boxHelper.update();
 }
@@ -518,10 +562,66 @@ function updateGizmoFromUI(changedAxis) {
     isUpdatingFromUI = false;
 }
 
+function updatePositionFromUI() {
+    if (!currentMesh.geometry) return;
+    isUpdatingFromUI = true;
+    const mult = getMultiplier();
+    
+    currentMesh.position.x = (parseFloat(posX.value) || 0) * mult;
+    currentMesh.position.z = (parseFloat(posY.value) || 0) * mult;
+    currentMesh.position.y = (parseFloat(posZ.value) || 0) * mult;
+    
+    if (boxHelper) boxHelper.update();
+    transformControl.attach(currentMesh);
+    isUpdatingFromUI = false;
+}
+
+function updateRotationFromUI() {
+    if (!currentMesh.geometry) return;
+    isUpdatingFromUI = true;
+    
+    currentMesh.rotation.x = THREE.MathUtils.degToRad(parseFloat(rotX.value) || 0);
+    currentMesh.rotation.z = THREE.MathUtils.degToRad(parseFloat(rotY.value) || 0);
+    currentMesh.rotation.y = THREE.MathUtils.degToRad(parseFloat(rotZ.value) || 0);
+    
+    if (boxHelper) boxHelper.update();
+    transformControl.attach(currentMesh);
+    isUpdatingFromUI = false;
+}
+
 [dimX, dimY, dimZ].forEach((input, index) => {
+    if (!input) return;
     const axis = ['x', 'z', 'y'][index];
     input.addEventListener('change', () => updateGizmoFromUI(axis));
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
+});
+
+[posX, posY, posZ].forEach((input) => {
+    if (!input) return;
+    input.addEventListener('change', updatePositionFromUI);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
+});
+
+[rotX, rotY, rotZ].forEach((input) => {
+    if (!input) return;
+    input.addEventListener('change', updateRotationFromUI);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
+});
+
+document.getElementById('btn-rot-reset')?.addEventListener('click', () => {
+    if (!currentMesh.geometry) return;
+    currentMesh.rotation.set(0, 0, 0);
+    if (boxHelper) boxHelper.update();
+    transformControl.attach(currentMesh);
+    updateUIFromGizmo();
+});
+
+document.getElementById('btn-rot-90z')?.addEventListener('click', () => {
+    if (!currentMesh.geometry) return;
+    currentMesh.rotation.y += Math.PI / 2;
+    if (boxHelper) boxHelper.update();
+    transformControl.attach(currentMesh);
+    updateUIFromGizmo();
 });
 
 unitSelect.addEventListener('change', () => {
@@ -530,9 +630,21 @@ unitSelect.addEventListener('change', () => {
         if (newUnit === 'in') {
             gridSizeInput.value = (parseFloat(gridSizeInput.value) / 25.4).toFixed(2);
             gridSizeInput.step = "0.25";
+            if (posX) posX.step = "0.05";
+            if (posY) posY.step = "0.05";
+            if (posZ) posZ.step = "0.05";
+            if (dimX) dimX.step = "0.05";
+            if (dimY) dimY.step = "0.05";
+            if (dimZ) dimZ.step = "0.05";
         } else {
             gridSizeInput.value = Math.round(parseFloat(gridSizeInput.value) * 25.4);
             gridSizeInput.step = "10";
+            if (posX) posX.step = "0.5";
+            if (posY) posY.step = "0.5";
+            if (posZ) posZ.step = "0.5";
+            if (dimX) dimX.step = "0.1";
+            if (dimY) dimY.step = "0.1";
+            if (dimZ) dimZ.step = "0.1";
         }
         currentUnit = newUnit;
     }
@@ -552,11 +664,16 @@ function appendLog(text, type = "normal") {
 function runWorker() {
     if (!editor) return; // Safeguard if triggered before editor initializes
     
+    showLoading('Compiling Model...');
     if (worker) worker.terminate(); 
-    worker = new Worker('scad-worker.js?v=19', { type: 'module' });
+    worker = new Worker('scad-worker.js?v=25', { type: 'module' });
     
+    worker.onerror = (err) => {
+        hideLoading();
+        appendLog(`❌ Worker error: ${err.message || 'Compilation crashed'}`, "error");
+    };
+
     worker.onmessage = (e) => {
-        loadingEl.style.display = 'none';
         const { success, format, buffer, logs } = e.data;
         
         consoleEl.innerHTML = ''; 
@@ -565,12 +682,19 @@ function runWorker() {
         if (success) {
             appendLog("✅ Compilation successful.", "success");
             if (format === '3mf') {
+                hideLoading();
                 const blob = new Blob([buffer], { type: 'application/vnd.ms-3mfdocument' });
                 downloadBlob(blob, 'parametric_model.3mf');
             } else if (format === 'stl') {
-                loadSTLToScene(buffer.buffer);
+                showLoading('Rendering 3D Scene...');
+                setTimeout(() => {
+                    loadSTLToScene(buffer.buffer);
+                    hideLoading();
+                }, 20);
+                return;
             }
         } else {
+            hideLoading();
             appendLog(`❌ Compilation failed`, "error");
         }
     };
@@ -681,6 +805,14 @@ function setGizmoMode(mode, btnId) {
     transformControl.setMode(mode);
     document.querySelectorAll('.gizmo-btn').forEach(b => b.classList.remove('active'));
     document.getElementById(btnId).classList.add('active');
+
+    // Toggle context-relevant panels
+    if (panelTranslate) panelTranslate.style.display = (mode === 'translate') ? 'block' : 'none';
+    if (panelRotate) panelRotate.style.display = (mode === 'rotate') ? 'block' : 'none';
+    if (panelScale) panelScale.style.display = (mode === 'scale') ? 'block' : 'none';
+    if (unitSelectRow) unitSelectRow.style.display = (mode === 'rotate') ? 'none' : 'flex';
+
+    updateUIFromGizmo();
 }
 
 document.getElementById('btn-mode-translate').addEventListener('click', () => setGizmoMode('translate', 'btn-mode-translate'));
@@ -738,8 +870,7 @@ if (btnExport3mf) {
     btnExport3mf.addEventListener('click', () => {
         if (btnExport3mf.disabled) return;
         if (!currentMesh.geometry || !editor) return;
-        loadingEl.style.display = 'block';
-        loadingEl.innerText = 'Baking 3MF...';
+        showLoading('Baking 3MF...');
 
         const sX = currentMesh.scale.x.toFixed(3);
         const sY = currentMesh.scale.z.toFixed(3); 
