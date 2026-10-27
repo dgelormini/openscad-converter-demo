@@ -2,47 +2,224 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Local OpenSCAD Studio</title>
-    <link rel="icon" href="data:,">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#121214">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>OpenSCAD Studio</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2310b981' stroke-width='2'><path d='M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z'></path></svg>">
     <style>
-        body { margin: 0; display: flex; height: 100vh; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #181818; overflow: hidden; color: #e5e7eb; }
+        :root {
+            --sat: env(safe-area-inset-top, 0px);
+            --sab: env(safe-area-inset-bottom, 0px);
+            --sal: env(safe-area-inset-left, 0px);
+            --sar: env(safe-area-inset-right, 0px);
+            --header-h: 46px;
+        }
 
-        #left-pane { width: 40%; display: flex; flex-direction: column; z-index: 5; min-width: 0; transition: width 0.2s ease-out; }
+        * { box-sizing: border-box; }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #181818;
+            overflow: hidden;
+            color: #e5e7eb;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* Top Header Navigation */
+        #app-header {
+            height: var(--header-h);
+            background: #121214;
+            border-bottom: 1px solid #282828;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 12px;
+            padding-top: var(--sat);
+            padding-left: calc(12px + var(--sal));
+            padding-right: calc(12px + var(--sar));
+            flex-shrink: 0;
+            z-index: 40;
+            user-select: none;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            letter-spacing: -0.2px;
+            color: #f3f4f6;
+        }
+        .brand svg { width: 18px; height: 18px; color: #10b981; flex-shrink: 0; }
+
+        /* Mobile Tab Switcher in Header */
+        #mobile-tabs {
+            display: none;
+            background: #1a1a1e;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 2px;
+            gap: 2px;
+            flex-shrink: 0;
+            white-space: nowrap;
+        }
+        .tab-btn {
+            background: transparent;
+            border: none;
+            color: #9ca3af;
+            padding: 5px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.15s ease;
+            position: relative;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .tab-btn.active {
+            background: #3b82f6;
+            color: #ffffff;
+            font-weight: 600;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+        }
+        .tab-badge {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #ef4444;
+            display: none;
+        }
+        .tab-badge.active { display: block; }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #header-btn-export {
+            background: #10b981;
+            border: 1px solid #059669;
+            color: #ffffff;
+            font-weight: 600;
+            font-size: 12px;
+            padding: 5px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s ease;
+        }
+        #header-btn-export:hover { background: #059669; }
+        #header-btn-export:active { transform: scale(0.97); }
+
+        /* Workspace */
+        #workspace {
+            flex: 1;
+            display: flex;
+            min-height: 0;
+            position: relative;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        #left-pane {
+            width: 40%;
+            display: flex;
+            flex-direction: column;
+            z-index: 5;
+            min-width: 0;
+            transition: width 0.2s ease-out;
+            background: #141414;
+        }
         #left-pane.collapsed { width: 0 !important; overflow: hidden; border: none; }
 
         #editor-toolbar {
             display: flex; align-items: center; justify-content: space-between;
-            background: #141414; padding: 8px 12px; border-bottom: 1px solid #2a2a2a;
+            background: #141414; padding: 7px 10px; border-bottom: 1px solid #2a2a2a;
+            flex-shrink: 0;
         }
-        .editor-tools { display: flex; gap: 6px; }
+        .editor-tools { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
         .editor-btn {
-            background: transparent; border: 1px solid transparent; color: #9ca3af;
-            border-radius: 4px; padding: 4px 8px; cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 11px;
-            transition: all 0.15s;
+            background: #202024; border: 1px solid #333; color: #9ca3af;
+            border-radius: 5px; padding: 5px 8px; cursor: pointer; display: flex; align-items: center; gap: 5px; font-size: 11px;
+            font-weight: 500; transition: all 0.15s;
         }
-        .editor-btn:hover { background: #222; color: #fff; border-color: #444; }
-        .editor-btn svg { width: 14px; height: 14px; }
+        .editor-btn:hover { background: #28282c; color: #fff; border-color: #444; }
+        .editor-btn svg { width: 13px; height: 13px; }
+        
+        .editor-btn.highlight-btn {
+            background: rgba(16, 185, 129, 0.16);
+            border-color: rgba(16, 185, 129, 0.4);
+            color: #34d399;
+            font-weight: 600;
+        }
+        .editor-btn.highlight-btn:hover {
+            background: rgba(16, 185, 129, 0.28);
+            color: #fff;
+        }
+
+        .editor-btn.primary-subtle-btn {
+            background: #2563eb;
+            border-color: #1d4ed8;
+            color: #fff;
+            font-weight: 600;
+        }
+        .editor-btn.primary-subtle-btn:hover { background: #1d4ed8; }
+
         #save-status { color: #10b981; font-size: 11px; font-family: monospace; opacity: 0; transition: opacity 0.5s; display: flex; align-items: center; gap: 4px; }
 
         #resizer {
             width: 6px; background: #2a2a2a; cursor: col-resize; z-index: 15;
             display: flex; align-items: center; justify-content: center; transition: background 0.2s;
-            border-left: 1px solid #111; border-right: 1px solid #111;
+            border-left: 1px solid #111; border-right: 1px solid #111; flex-shrink: 0;
         }
         #resizer:hover, #resizer.active { background: #3b82f6; }
         #resizer::after { content: "⋮"; color: #666; font-size: 18px; }
 
-        #editor-container { flex: 1; position: relative; min-width: 0; }
+        #editor-container { flex: 1; position: relative; min-width: 0; min-height: 0; }
+        
+        #console-wrapper {
+            display: flex; flex-direction: column; flex-shrink: 0;
+            border-top: 1px solid #333; background: #141414;
+        }
+        #console-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 5px 10px; background: #19191d; border-bottom: 1px solid #27272a;
+            font-size: 11px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.5px;
+            cursor: pointer; user-select: none;
+        }
+        #console-header:hover { color: #ccc; }
+        #console-header svg { transition: transform 0.2s; }
+        #console-wrapper.collapsed #console-header svg { transform: rotate(-90deg); }
+        #console-wrapper.collapsed #console-container { display: none; }
+
         #console-container {
-            height: 220px; background: #141414; color: #a1a1aa;
+            height: 180px; background: #121214; color: #a1a1aa;
             font-family: 'JetBrains Mono', 'Courier New', Courier, monospace; font-size: 12px;
-            padding: 12px; overflow-y: auto; border-top: 1px solid #333; min-width: 0;
+            padding: 10px; overflow-y: auto; min-width: 0;
         }
         .log-error { color: #ef4444; }
         .log-success { color: #10b981; }
 
         #preview-container { flex: 1; position: relative; background: #1e1e1e; display: flex; min-width: 0; }
         #canvas-wrapper { flex: 1; position: relative; min-width: 0; overflow: hidden; }
+        #canvas-wrapper canvas { touch-action: none; display: block; }
 
         #drag-overlay {
             position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 50;
@@ -75,6 +252,10 @@
         #zoom-slider-container input[type="range"] { flex: 1; cursor: pointer; accent-color: #3b82f6; margin: 0; }
         .zoom-icon { color: #d1d5db; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; transform: rotate(90deg); user-select: none; }
 
+        #mobile-canvas-actions { display: none; }
+        .sheet-handle-bar { display: none; }
+        #sheet-backdrop { display: none; }
+
         #right-panel {
             width: 280px; min-width: 280px; background: #222225; border-left: 1px solid #333;
             display: flex; flex-direction: column; padding: 16px; box-sizing: border-box;
@@ -100,7 +281,7 @@
         input[type="number"] { -moz-appearance: textfield; }
 
         .input-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-        .scrub-label { font-size: 12px; color: #d1d5db; display: flex; align-items: center; gap: 6px; cursor: ew-resize; user-select: none; padding: 2px 0;}
+        .scrub-label { font-size: 12px; color: #d1d5db; display: flex; align-items: center; gap: 6px; cursor: ew-resize; user-select: none; padding: 2px 0; touch-action: none; }
         .scrub-label:hover { color: #fff; }
 
         .input-row input[type="number"] {
@@ -130,6 +311,7 @@
         .action-btn.primary:hover { background: #059669; }
 
         #version-badge { text-align: center; color: #6b7280; font-family: monospace; font-size: 11px; margin-top: auto; }
+        
         #loading {
             position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
             color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -148,8 +330,249 @@
             border-radius: 50%;
             animation: spin 0.75s linear infinite;
         }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Toast notification */
+        #toast {
+            position: fixed;
+            top: calc(var(--header-h) + 12px + var(--sat));
+            left: 50%;
+            transform: translateX(-50%) translateY(-20px);
+            background: rgba(24, 24, 28, 0.95);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid #444;
+            color: #f3f4f6;
+            padding: 8px 18px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.5);
+            z-index: 200;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            max-width: 90vw;
+            text-align: center;
+        }
+        #toast.active {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+            pointer-events: auto;
+        }
+        #toast.success { border-color: #10b981; color: #a7f3d0; }
+        #toast.error { border-color: #ef4444; color: #fca5a5; }
+
+        /* Manual Paste Fallback Modal */
+        #paste-modal {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.75); backdrop-filter: blur(4px);
+            z-index: 250; display: none; align-items: center; justify-content: center;
+            padding: 16px;
+        }
+        #paste-modal.active { display: flex; }
+        .paste-dialog {
+            background: #222226; border: 1px solid #444; border-radius: 12px;
+            width: 100%; max-width: 500px; padding: 18px; box-shadow: 0 16px 40px rgba(0,0,0,0.6);
+        }
+        .paste-dialog h3 { margin: 0 0 8px 0; font-size: 16px; color: #f3f4f6; }
+        .paste-dialog p { margin: 0 0 12px 0; font-size: 13px; color: #9ca3af; }
+        .paste-dialog textarea {
+            width: 100%; height: 160px; background: #151518; border: 1px solid #333;
+            border-radius: 6px; color: #e5e7eb; font-family: monospace; font-size: 13px;
+            padding: 10px; resize: none; outline: none; margin-bottom: 14px;
+        }
+        .paste-dialog textarea:focus { border-color: #3b82f6; }
+        .paste-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+        .btn-modal {
+            padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent;
+        }
+        .btn-modal.cancel { background: #333; color: #ccc; }
+        .btn-modal.cancel:hover { background: #444; }
+        .btn-modal.confirm { background: #10b981; color: #fff; border-color: #059669; }
+        .btn-modal.confirm:hover { background: #059669; }
+
+        /* ==================================================== */
+        /* RESPONSIVE BREAKPOINT: MOBILE & TABLET PORTRAIT (<768px) */
+        /* ==================================================== */
+        @media (max-width: 768px) {
+            #mobile-tabs { display: flex; }
+            .desktop-only { display: none !important; }
+            #resizer { display: none !important; }
+            .header-actions { display: none !important; }
+
+            .brand { gap: 6px; flex-shrink: 0; }
+            .brand-title { display: none; }
+
+            #app-header {
+                justify-content: space-between;
+                padding: 0 14px;
+            }
+
+            #workspace { flex-direction: column; }
+
+            #left-pane {
+                width: 100% !important;
+                flex: 1;
+                display: flex;
+            }
+            #left-pane.mobile-hidden { display: none !important; }
+
+            #preview-container {
+                width: 100% !important;
+                flex: 1;
+                display: flex;
+            }
+            #preview-container.mobile-hidden { display: none !important; }
+
+            /* Camera Presets on mobile: centered above mobile floating actions */
+            #camera-presets {
+                bottom: calc(64px + var(--sab)) !important;
+                top: auto !important;
+                left: 50% !important;
+                transform: translateX(-50%) !important;
+                width: 215px !important;
+                background: rgba(22, 22, 26, 0.88) !important;
+                backdrop-filter: blur(12px) !important;
+                -webkit-backdrop-filter: blur(12px) !important;
+                border: 1px solid rgba(255, 255, 255, 0.12) !important;
+                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+            }
+
+            /* Floating bottom actions on mobile 3D View */
+            #mobile-canvas-actions {
+                position: absolute;
+                bottom: calc(14px + var(--sab));
+                left: 50%;
+                transform: translateX(-50%);
+                z-index: 25;
+                display: flex;
+                gap: 8px;
+                background: rgba(22, 22, 26, 0.88);
+                backdrop-filter: blur(14px);
+                -webkit-backdrop-filter: blur(14px);
+                border: 1px solid rgba(255, 255, 255, 0.14);
+                padding: 6px 10px;
+                border-radius: 30px;
+                box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+                max-width: calc(100% - 24px);
+            }
+            .mobile-action-pill {
+                background: #2b2b32;
+                border: 1px solid #444;
+                color: #f3f4f6;
+                padding: 8px 14px;
+                border-radius: 20px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 13px;
+                font-weight: 500;
+                white-space: nowrap;
+                transition: all 0.15s ease;
+            }
+            .mobile-action-pill:active { transform: scale(0.96); }
+            .mobile-action-pill.primary {
+                background: #10b981;
+                border-color: #059669;
+                color: #ffffff;
+                font-weight: 600;
+            }
+
+            /* Right panel becomes bottom sheet drawer on mobile */
+            #sheet-backdrop {
+                display: block;
+                position: fixed;
+                top: 0; left: 0; right: 0; bottom: 0;
+                background: rgba(0, 0, 0, 0.55);
+                backdrop-filter: blur(3px);
+                -webkit-backdrop-filter: blur(3px);
+                z-index: 95;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.25s ease;
+            }
+            #sheet-backdrop.active {
+                opacity: 1;
+                pointer-events: auto;
+            }
+
+            #right-panel {
+                position: fixed;
+                left: 0; right: 0; bottom: 0;
+                width: 100% !important;
+                min-width: 100% !important;
+                max-height: 82vh;
+                max-height: 82dvh;
+                background: #1c1c20;
+                border-left: none;
+                border-top: 1px solid #38383e;
+                border-radius: 18px 18px 0 0;
+                box-shadow: 0 -12px 35px rgba(0, 0, 0, 0.6);
+                padding: 12px 18px calc(24px + var(--sab)) 18px;
+                z-index: 100;
+                transform: translateY(100%);
+                transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+            }
+            #right-panel.sheet-open {
+                transform: translateY(0);
+            }
+
+            .sheet-handle-bar {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                margin-bottom: 12px;
+                padding-bottom: 8px;
+                border-bottom: 1px solid #2e2e34;
+                position: relative;
+            }
+            .sheet-drag-handle {
+                width: 38px;
+                height: 4px;
+                border-radius: 2px;
+                background: #555;
+                margin-bottom: 8px;
+            }
+            .sheet-header-title {
+                font-size: 13px;
+                font-weight: 600;
+                color: #d1d5db;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            .sheet-close-btn {
+                position: absolute;
+                right: 0; top: 0;
+                background: transparent;
+                border: none;
+                color: #9ca3af;
+                font-size: 18px;
+                padding: 4px 8px;
+                cursor: pointer;
+            }
+
+            /* Inputs font-size 16px to prevent iOS auto-zoom */
+            .input-row input[type="number"], .toggle-row select {
+                font-size: 16px !important;
+                padding: 8px 10px !important;
+            }
+            .scrub-label {
+                padding: 6px 0 !important;
+                font-size: 13px !important;
+            }
+            .segmented-control button {
+                padding: 8px 0 !important;
+                font-size: 13px !important;
+            }
+            .editor-btn {
+                padding: 6px 10px !important;
+                font-size: 12px !important;
+            }
+            #console-container {
+                height: 120px;
+            }
         }
     </style>
 
@@ -165,194 +588,292 @@
 </head>
 <body>
     <div id="drag-overlay"><h2>Drop .scad file here</h2></div>
+    <div id="sheet-backdrop"></div>
+    <div id="toast"></div>
 
-    <div id="left-pane">
-        <div id="editor-toolbar">
-            <div class="editor-tools">
-                <button class="editor-btn" id="btn-undo" title="Undo (Ctrl+Z)">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"></path><path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"></path></svg> Undo
-                </button>
-                <button class="editor-btn" id="btn-redo" title="Redo (Ctrl+Y)">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 7v6h-6"></path><path d="M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.7"></path></svg> Redo
-                </button>
-                <div style="width: 1px; height: 14px; background: #333; margin: 0 4px;"></div>
-                <button class="editor-btn" id="btn-clear" title="Clear Editor">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path></svg> Clear
-                </button>
+    <!-- Manual Paste Modal for Fallback -->
+    <div id="paste-modal">
+        <div class="paste-dialog">
+            <h3>Paste OpenSCAD Code</h3>
+            <p>Paste your OpenSCAD script below to preview in 3D and export to STL:</p>
+            <textarea id="paste-modal-input" placeholder="// Paste OpenSCAD code here..."></textarea>
+            <div class="paste-dialog-actions">
+                <button id="btn-paste-cancel" class="btn-modal cancel">Cancel</button>
+                <button id="btn-paste-confirm" class="btn-modal confirm">Render & View 3D</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Top Header -->
+    <header id="app-header">
+        <div class="brand">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                <line x1="12" y1="22.08" x2="12" y2="12"></line>
+            </svg>
+            <span class="brand-title">OpenSCAD Studio</span>
+        </div>
+
+        <div id="mobile-tabs">
+            <button id="tab-code" class="tab-btn active" title="Code Editor">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+                <span>Code</span>
+                <span id="code-badge" class="tab-badge"></span>
+            </button>
+            <button id="tab-preview" class="tab-btn" title="3D View">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+                <span>3D View</span>
+                <span id="preview-badge" class="tab-badge"></span>
+            </button>
+        </div>
+
+        <div class="header-actions">
             <div id="save-status">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg> Saved
             </div>
-        </div>
-
-        <div id="editor-container"></div>
-        <div id="console-container">OpenSCAD Studio Initialized...</div>
-    </div>
-
-    <div id="resizer"></div>
-
-    <div id="preview-container">
-        <div id="canvas-wrapper">
-            <div id="loading">
-                <div class="spinner"></div>
-                <span id="loading-text">Compiling Model...</span>
-            </div>
-            <button id="btn-toggle-editor" class="canvas-btn" title="Toggle Code Editor">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>
+            <button id="header-btn-export" title="Export STL file">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                <span class="btn-text">Export STL</span>
             </button>
-
-            <div id="camera-presets" class="segmented-control">
-                <button id="btn-cam-lens" title="Toggle Orthographic / Perspective" style="border-right: 1px solid #333; border-radius: 4px 0 0 4px; padding: 0 4px;">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg>
-                </button>
-                <button id="btn-cam-fit" title="Zoom to Fit Model (F)">Fit</button>
-                <button id="btn-cam-top" title="Top View">Top</button>
-                <button id="btn-cam-front" title="Front View">Front</button>
-                <button id="btn-cam-iso" class="active" title="Isometric View">Iso</button>
-            </div>
-
-            <div id="zoom-slider-container">
-                <div class="zoom-icon" id="btn-zoom-out" title="Zoom Out (-)" style="cursor: pointer;">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                </div>
-                <input type="range" id="zoom-slider" min="0" max="100" value="50" step="any">
-                <div class="zoom-icon" id="btn-zoom-in" title="Zoom In (+)" style="cursor: pointer;">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                </div>
-            </div>
         </div>
+    </header>
 
-        <div id="right-panel">
-            <div class="panel-section">
-                <div class="panel-title">Transform</div>
-
-                <div class="tool-row">
-                    <div class="segmented-control">
-                        <button id="btn-mode-translate" class="gizmo-btn active" title="Move (T)">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="5 9 2 12 5 15"></polyline><polyline points="9 5 12 2 15 5"></polyline><polyline points="19 9 22 12 19 15"></polyline><polyline points="9 19 12 22 15 19"></polyline><line x1="2" y1="12" x2="22" y2="12"></line><line x1="12" y1="2" x2="12" y2="22"></line></svg>
-                        </button>
-                        <button id="btn-mode-rotate" class="gizmo-btn" title="Rotate (R)">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
-                        </button>
-                        <button id="btn-mode-scale" class="gizmo-btn" title="Scale (S)">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 3l-6 6"></path><path d="M21 3v6"></path><path d="M21 3h-6"></path><path d="M14 14l-4 4"></path><path d="M14 18v-4"></path><path d="M14 14h-4"></path><rect x="3" y="14" width="7" height="7" rx="1"></rect></svg>
-                        </button>
-                    </div>
-                    <button id="btn-center-mesh" class="action-btn" style="width: auto; padding: 0 12px; margin: 0;" title="Center on Bed (C)">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+    <!-- Main Workspace Container -->
+    <div id="workspace">
+        <div id="left-pane">
+            <div id="editor-toolbar">
+                <div class="editor-tools">
+                    <button class="editor-btn highlight-btn" id="btn-paste" title="Paste OpenSCAD Code from Clipboard">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg> Paste
+                    </button>
+                    <button class="editor-btn" id="btn-copy" title="Copy Code">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> Copy
+                    </button>
+                    <button class="editor-btn" id="btn-open-file" title="Open .scad File">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg> Open
+                    </button>
+                    <input type="file" id="file-input" accept=".scad,.txt" style="display: none;">
+                    
+                    <button class="editor-btn desktop-only" id="btn-undo" title="Undo (Ctrl+Z)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"></path><path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"></path></svg> Undo
+                    </button>
+                    <button class="editor-btn desktop-only" id="btn-redo" title="Redo (Ctrl+Y)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 7v6h-6"></path><path d="M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.7"></path></svg> Redo
+                    </button>
+                    <div style="width: 1px; height: 14px; background: #333; margin: 0 2px;"></div>
+                    <button class="editor-btn" id="btn-clear" title="Clear Editor">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path></svg> Clear
                     </button>
                 </div>
+                
+                <button class="editor-btn primary-subtle-btn" id="btn-render" title="Compile & Preview in 3D">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> Render 3D
+                </button>
+            </div>
 
-                <div class="toggle-row" id="unit-select-row">
-                    <span>Units</span>
-                    <select id="unit-select">
-                        <option value="mm">Millimeters</option>
-                        <option value="in">Inches</option>
-                    </select>
+            <div id="editor-container"></div>
+
+            <div id="console-wrapper">
+                <div id="console-header">
+                    <span>Console & Compiler Output</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </div>
+                <div id="console-container">OpenSCAD Studio Initialized...</div>
+            </div>
+        </div>
+
+        <div id="resizer"></div>
+
+        <div id="preview-container">
+            <div id="canvas-wrapper">
+                <div id="loading">
+                    <div class="spinner"></div>
+                    <span id="loading-text">Compiling Model...</span>
+                </div>
+                <button id="btn-toggle-editor" class="canvas-btn desktop-only" title="Toggle Code Editor">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>
+                </button>
+
+                <div id="camera-presets" class="segmented-control">
+                    <button id="btn-cam-lens" title="Toggle Orthographic / Perspective" style="border-right: 1px solid #333; border-radius: 4px 0 0 4px; padding: 0 4px;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg>
+                    </button>
+                    <button id="btn-cam-fit" title="Zoom to Fit Model (F)">Fit</button>
+                    <button id="btn-cam-top" title="Top View">Top</button>
+                    <button id="btn-cam-front" title="Front View">Front</button>
+                    <button id="btn-cam-iso" class="active" title="Isometric View">Iso</button>
                 </div>
 
-                <!-- 1. TRANSLATION / POSITION CONTROLS -->
-                <div id="controls-translate" class="transform-subpanel">
-                    <div class="input-row">
-                        <label class="scrub-label" data-target="pos-x" title="Drag to adjust"><span style="color: #f87171;">X</span> Pos</label>
-                        <input type="number" id="pos-x" step="0.5" value="0.00">
+                <div id="zoom-slider-container" class="desktop-only">
+                    <div class="zoom-icon" id="btn-zoom-out" title="Zoom Out (-)" style="cursor: pointer;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                     </div>
-                    <div class="input-row">
-                        <label class="scrub-label" data-target="pos-y" title="Drag to adjust"><span style="color: #34d399;">Y</span> Pos</label>
-                        <input type="number" id="pos-y" step="0.5" value="0.00">
-                    </div>
-                    <div class="input-row">
-                        <label class="scrub-label" data-target="pos-z" title="Drag to adjust"><span style="color: #60a5fa;">Z</span> Pos</label>
-                        <input type="number" id="pos-z" step="0.5" value="0.00">
+                    <input type="range" id="zoom-slider" min="0" max="100" value="50" step="any">
+                    <div class="zoom-icon" id="btn-zoom-in" title="Zoom In (+)" style="cursor: pointer;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                     </div>
                 </div>
 
-                <!-- 2. ROTATION CONTROLS -->
-                <div id="controls-rotate" class="transform-subpanel" style="display: none;">
-                    <div class="input-row">
-                        <label class="scrub-label" data-target="rot-x" title="Drag to adjust"><span style="color: #f87171;">X</span> Angle</label>
-                        <input type="number" id="rot-x" step="1" value="0.0">
-                    </div>
-                    <div class="input-row">
-                        <label class="scrub-label" data-target="rot-y" title="Drag to adjust"><span style="color: #34d399;">Y</span> Angle</label>
-                        <input type="number" id="rot-y" step="1" value="0.0">
-                    </div>
-                    <div class="input-row">
-                        <label class="scrub-label" data-target="rot-z" title="Drag to adjust"><span style="color: #60a5fa;">Z</span> Angle</label>
-                        <input type="number" id="rot-z" step="1" value="0.0">
-                    </div>
-                    <div style="display: flex; gap: 6px; margin-top: 8px;">
-                        <button id="btn-rot-reset" class="action-btn" style="padding: 5px 0; font-size: 11px; margin: 0;" title="Reset Rotation">Reset (0°)</button>
-                        <button id="btn-rot-90z" class="action-btn" style="padding: 5px 0; font-size: 11px; margin: 0;" title="Rotate 90° on Bed (+Z)">+90° Z</button>
-                    </div>
-                </div>
-
-                <!-- 3. SCALE / SIZE CONTROLS -->
-                <div id="controls-scale" class="transform-subpanel" style="display: none;">
-                    <div class="toggle-row" style="margin-bottom: 8px;">
-                        <span>Uniform Scale</span>
-                        <input type="checkbox" id="uniform-scale" checked>
-                    </div>
-                    <div class="input-row">
-                        <label class="scrub-label" data-target="dim-x" title="Drag to adjust"><span style="color: #f87171;">X</span> Size</label>
-                        <input type="number" id="dim-x" step="0.1" value="0.00">
-                    </div>
-                    <div class="input-row">
-                        <label class="scrub-label" data-target="dim-y" title="Drag to adjust"><span style="color: #34d399;">Y</span> Size</label>
-                        <input type="number" id="dim-y" step="0.1" value="0.00">
-                    </div>
-                    <div class="input-row">
-                        <label class="scrub-label" data-target="dim-z" title="Drag to adjust"><span style="color: #60a5fa;">Z</span> Size</label>
-                        <input type="number" id="dim-z" step="0.1" value="0.00">
-                    </div>
+                <!-- Floating Mobile Action Bar -->
+                <div id="mobile-canvas-actions">
+                    <button id="btn-mobile-sheet" class="mobile-action-pill" title="Transform & Appearance Settings">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                        <span>Adjust</span>
+                    </button>
+                    <button id="btn-mobile-center" class="mobile-action-pill" title="Center on Bed">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+                        <span>Center</span>
+                    </button>
+                    <button id="btn-mobile-export" class="mobile-action-pill primary" title="Export STL file">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        <span>Export STL</span>
+                    </button>
                 </div>
             </div>
 
-            <div class="panel-section">
-                <div class="panel-title">Appearance</div>
-
-                <div class="toggle-row" style="margin-bottom: 12px;">
-                    <span>Printer Profile</span>
-                    <select id="printer-profile">
-                        <option value="256,256,256">Bambu P1/X1 (256³)</option>
-                        <option value="250,210,220">Prusa MK4 (250x210x220)</option>
-                        <option value="350,350,350">Voron v2.4 (350³)</option>
-                        <option value="180,180,180">Prusa Mini (180³)</option>
-                    </select>
+            <!-- Right Panel (Sidebar on desktop, bottom sheet on mobile) -->
+            <div id="right-panel">
+                <div class="sheet-handle-bar">
+                    <div class="sheet-drag-handle"></div>
+                    <div class="sheet-header-title">Model Controls & Bed</div>
+                    <button id="btn-close-sheet" class="sheet-close-btn" title="Close">✕</button>
                 </div>
 
-                <input type="color" id="model-color" value="#cbd5e1" title="Material Color">
+                <div class="panel-section">
+                    <div class="panel-title">Transform</div>
 
-                <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
-                    <label style="font-size: 12px; display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                        <input type="checkbox" id="toggle-bounds"> Show Bounding Box
-                    </label>
-                    <label style="font-size: 12px; display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                        <input type="checkbox" id="toggle-print-volume"> Show Print Volume
-                    </label>
-                    <label style="font-size: 12px; display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                        <input type="checkbox" id="toggle-grid-numbers" checked> Show Grid Numbers
-                    </label>
+                    <div class="tool-row">
+                        <div class="segmented-control">
+                            <button id="btn-mode-translate" class="gizmo-btn active" title="Move (T)">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="5 9 2 12 5 15"></polyline><polyline points="9 5 12 2 15 5"></polyline><polyline points="19 9 22 12 19 15"></polyline><polyline points="9 19 12 22 15 19"></polyline><line x1="2" y1="12" x2="22" y2="12"></line><line x1="12" y1="2" x2="12" y2="22"></line></svg>
+                            </button>
+                            <button id="btn-mode-rotate" class="gizmo-btn" title="Rotate (R)">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                            </button>
+                            <button id="btn-mode-scale" class="gizmo-btn" title="Scale (S)">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 3l-6 6"></path><path d="M21 3v6"></path><path d="M21 3h-6"></path><path d="M14 14l-4 4"></path><path d="M14 18v-4"></path><path d="M14 14h-4"></path><rect x="3" y="14" width="7" height="7" rx="1"></rect></svg>
+                            </button>
+                        </div>
+                        <button id="btn-center-mesh" class="action-btn" style="width: auto; padding: 0 12px; margin: 0;" title="Center on Bed (C)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+                        </button>
+                    </div>
+
+                    <div class="toggle-row" id="unit-select-row">
+                        <span>Units</span>
+                        <select id="unit-select">
+                            <option value="mm">Millimeters</option>
+                            <option value="in">Inches</option>
+                        </select>
+                    </div>
+
+                    <!-- 1. TRANSLATION / POSITION CONTROLS -->
+                    <div id="controls-translate" class="transform-subpanel">
+                        <div class="input-row">
+                            <label class="scrub-label" data-target="pos-x" title="Drag to adjust"><span style="color: #f87171;">X</span> Pos</label>
+                            <input type="number" id="pos-x" step="0.5" value="0.00">
+                        </div>
+                        <div class="input-row">
+                            <label class="scrub-label" data-target="pos-y" title="Drag to adjust"><span style="color: #34d399;">Y</span> Pos</label>
+                            <input type="number" id="pos-y" step="0.5" value="0.00">
+                        </div>
+                        <div class="input-row">
+                            <label class="scrub-label" data-target="pos-z" title="Drag to adjust"><span style="color: #60a5fa;">Z</span> Pos</label>
+                            <input type="number" id="pos-z" step="0.5" value="0.00">
+                        </div>
+                    </div>
+
+                    <!-- 2. ROTATION CONTROLS -->
+                    <div id="controls-rotate" class="transform-subpanel" style="display: none;">
+                        <div class="input-row">
+                            <label class="scrub-label" data-target="rot-x" title="Drag to adjust"><span style="color: #f87171;">X</span> Angle</label>
+                            <input type="number" id="rot-x" step="1" value="0.0">
+                        </div>
+                        <div class="input-row">
+                            <label class="scrub-label" data-target="rot-y" title="Drag to adjust"><span style="color: #34d399;">Y</span> Angle</label>
+                            <input type="number" id="rot-y" step="1" value="0.0">
+                        </div>
+                        <div class="input-row">
+                            <label class="scrub-label" data-target="rot-z" title="Drag to adjust"><span style="color: #60a5fa;">Z</span> Angle</label>
+                            <input type="number" id="rot-z" step="1" value="0.0">
+                        </div>
+                        <div style="display: flex; gap: 6px; margin-top: 8px;">
+                            <button id="btn-rot-reset" class="action-btn" style="padding: 5px 0; font-size: 11px; margin: 0;" title="Reset Rotation">Reset (0°)</button>
+                            <button id="btn-rot-90z" class="action-btn" style="padding: 5px 0; font-size: 11px; margin: 0;" title="Rotate 90° on Bed (+Z)">+90° Z</button>
+                        </div>
+                    </div>
+
+                    <!-- 3. SCALE / SIZE CONTROLS -->
+                    <div id="controls-scale" class="transform-subpanel" style="display: none;">
+                        <div class="toggle-row" style="margin-bottom: 8px;">
+                            <span>Uniform Scale</span>
+                            <input type="checkbox" id="uniform-scale" checked>
+                        </div>
+                        <div class="input-row">
+                            <label class="scrub-label" data-target="dim-x" title="Drag to adjust"><span style="color: #f87171;">X</span> Size</label>
+                            <input type="number" id="dim-x" step="0.1" value="0.00">
+                        </div>
+                        <div class="input-row">
+                            <label class="scrub-label" data-target="dim-y" title="Drag to adjust"><span style="color: #34d399;">Y</span> Size</label>
+                            <input type="number" id="dim-y" step="0.1" value="0.00">
+                        </div>
+                        <div class="input-row">
+                            <label class="scrub-label" data-target="dim-z" title="Drag to adjust"><span style="color: #60a5fa;">Z</span> Size</label>
+                            <input type="number" id="dim-z" step="0.1" value="0.00">
+                        </div>
+                    </div>
                 </div>
 
-                <div class="input-row" style="margin-top: 12px;">
-                    <label class="scrub-label" data-target="grid-size" title="Drag to adjust">Grid Cell</label>
-                    <input type="number" id="grid-size" step="1" value="10" min="1">
+                <div class="panel-section">
+                    <div class="panel-title">Appearance & Printer</div>
+
+                    <div class="toggle-row" style="margin-bottom: 12px;">
+                        <span>Printer Profile</span>
+                        <select id="printer-profile">
+                            <option value="256,256,256">Bambu P1/X1 (256³)</option>
+                            <option value="250,210,220">Prusa MK4 (250x210x220)</option>
+                            <option value="350,350,350">Voron v2.4 (350³)</option>
+                            <option value="180,180,180">Prusa Mini (180³)</option>
+                        </select>
+                    </div>
+
+                    <input type="color" id="model-color" value="#cbd5e1" title="Material Color">
+
+                    <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
+                        <label style="font-size: 12px; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" id="toggle-bounds"> Show Bounding Box
+                        </label>
+                        <label style="font-size: 12px; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" id="toggle-print-volume"> Show Print Volume
+                        </label>
+                        <label style="font-size: 12px; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" id="toggle-grid-numbers" checked> Show Grid Numbers
+                        </label>
+                    </div>
+
+                    <div class="input-row" style="margin-top: 12px;">
+                        <label class="scrub-label" data-target="grid-size" title="Drag to adjust">Grid Cell</label>
+                        <input type="number" id="grid-size" step="1" value="10" min="1">
+                    </div>
                 </div>
+
+                <div class="panel-section" style="margin-top: auto; margin-bottom: 0;">
+                    <div class="panel-title">Export STL</div>
+                    <button id="btn-export-stl" class="action-btn primary">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Export STL
+                    </button>
+                    <button id="btn-export-3mf" class="action-btn" disabled style="opacity: 0.45; cursor: not-allowed;" title="3MF export is coming soon">Export 3MF (Coming Soon)</button>
+                </div>
+
+                <div id="version-badge">v25.1.0</div>
             </div>
-
-            <div class="panel-section" style="margin-top: auto; margin-bottom: 0;">
-                <div class="panel-title">Export</div>
-                <button id="btn-export-stl" class="action-btn primary">Export STL</button>
-                <button id="btn-export-3mf" class="action-btn" disabled style="opacity: 0.45; cursor: not-allowed;" title="3MF export is coming soon">Export 3MF (Coming Soon)</button>
-            </div>
-
-            <div id="version-badge">v25.0.0</div>
         </div>
     </div>
 
-    <script type="module" src="app.js?v=25"></script>
+    <script type="module" src="app.js?v=26"></script>
     <!-- Cloudflare Web Analytics -->
-    <script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "e270c300833e45709e88b33c45817f10"}'></script><!-- End Cloudflare Web Analytics -->
+    <script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "e270c300833e45709e88b33c45817f10"}'></script>
 </body>
 </html>

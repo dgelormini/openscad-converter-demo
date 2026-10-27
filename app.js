@@ -4,7 +4,7 @@ import { STLExporter } from 'three/addons/exporters/STLExporter.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 
-// --- State Variables (Hoisted to prevent ReferenceErrors) ---
+// --- State Variables ---
 let editor = null; 
 let currentMesh = new THREE.Group(); 
 let baseSize = new THREE.Vector3(); 
@@ -14,11 +14,27 @@ let worker = null;
 let isUpdatingFromUI = false;
 let currentUnit = 'mm';
 let saveTimeout = null;
+let toastTimeout = null;
 let printX = 256, printY = 256, printZ = 256;
+let activeMobileTab = 'preview'; // Default view for mobile
+
+// --- Toast Feedback Helper ---
+function showToast(msg, type = 'normal', duration = 3000) {
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+    toast.textContent = msg;
+    toast.className = `active ${type}`;
+    clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => {
+        toast.className = '';
+    }, duration);
+}
 
 // --- DOM Elements ---
 const wrapper = document.getElementById('canvas-wrapper');
 const consoleEl = document.getElementById('console-container');
+const consoleWrapper = document.getElementById('console-wrapper');
+const consoleHeader = document.getElementById('console-header');
 const loadingEl = document.getElementById('loading');
 const loadingText = document.getElementById('loading-text');
 
@@ -54,19 +70,47 @@ const printerProfile = document.getElementById('printer-profile');
 const zoomSlider = document.getElementById('zoom-slider');
 const saveStatus = document.getElementById('save-status');
 
+const leftPane = document.getElementById('left-pane');
+const previewContainer = document.getElementById('preview-container');
+const tabCode = document.getElementById('tab-code');
+const tabPreview = document.getElementById('tab-preview');
+const rightPanel = document.getElementById('right-panel');
+const sheetBackdrop = document.getElementById('sheet-backdrop');
+const btnMobileSheet = document.getElementById('btn-mobile-sheet');
+const btnCloseSheet = document.getElementById('btn-close-sheet');
+const btnMobileCenter = document.getElementById('btn-mobile-center');
+const btnMobileExport = document.getElementById('btn-mobile-export');
+const headerBtnExport = document.getElementById('header-btn-export');
+const btnExportStl = document.getElementById('btn-export-stl');
+const btnPaste = document.getElementById('btn-paste');
+const btnCopy = document.getElementById('btn-copy');
+const btnOpenFile = document.getElementById('btn-open-file');
+const fileInput = document.getElementById('file-input');
+const btnRender = document.getElementById('btn-render');
+const pasteModal = document.getElementById('paste-modal');
+const pasteInput = document.getElementById('paste-modal-input');
+const btnPasteConfirm = document.getElementById('btn-paste-confirm');
+const btnPasteCancel = document.getElementById('btn-paste-cancel');
+
+
 // --- 1. Three.js Scene Setup ---
 const scene = new THREE.Scene();
 
-let cameraPersp = new THREE.PerspectiveCamera(45, wrapper.clientWidth / wrapper.clientHeight, 0.1, 3000);
-let cameraOrtho = new THREE.OrthographicCamera(wrapper.clientWidth / -4, wrapper.clientWidth / 4, wrapper.clientHeight / 4, wrapper.clientHeight / -4, 0.1, 3000);
+const clientW = wrapper ? (wrapper.clientWidth || window.innerWidth) : window.innerWidth;
+const clientH = wrapper ? (wrapper.clientHeight || window.innerHeight) : window.innerHeight;
+
+let cameraPersp = new THREE.PerspectiveCamera(45, clientW / clientH, 0.1, 3000);
+let cameraOrtho = new THREE.OrthographicCamera(clientW / -4, clientW / 4, clientH / 4, clientH / -4, 0.1, 3000);
 let camera = cameraPersp;
 camera.position.set(220, 200, 220);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setSize(wrapper.clientWidth, wrapper.clientHeight);
+renderer.setSize(clientW, clientH);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
-wrapper.appendChild(renderer.domElement);
+renderer.domElement.style.touchAction = 'none'; // Critical for smooth touch navigation
+if (wrapper) wrapper.appendChild(renderer.domElement);
 
 const orbit = new OrbitControls(camera, renderer.domElement);
 orbit.enableDamping = true;
@@ -82,13 +126,15 @@ const MIN_DIST = 25;
 const MAX_DIST = 1400;
 let isDraggingZoomSlider = false;
 
-zoomSlider.addEventListener('mousedown', () => { isDraggingZoomSlider = true; });
-zoomSlider.addEventListener('touchstart', () => { isDraggingZoomSlider = true; }, { passive: true });
-window.addEventListener('mouseup', () => { isDraggingZoomSlider = false; });
-window.addEventListener('touchend', () => { isDraggingZoomSlider = false; });
+if (zoomSlider) {
+    zoomSlider.addEventListener('mousedown', () => { isDraggingZoomSlider = true; });
+    zoomSlider.addEventListener('touchstart', () => { isDraggingZoomSlider = true; }, { passive: true });
+    window.addEventListener('mouseup', () => { isDraggingZoomSlider = false; });
+    window.addEventListener('touchend', () => { isDraggingZoomSlider = false; });
+}
 
 function syncZoomSlider() {
-    if (isDraggingZoomSlider) return;
+    if (isDraggingZoomSlider || !zoomSlider) return;
     let dist;
     if (camera.isOrthographicCamera) {
         dist = 220 / Math.max(camera.zoom, 0.01);
@@ -96,7 +142,6 @@ function syncZoomSlider() {
         dist = camera.position.distanceTo(orbit.target);
     }
     dist = Math.min(Math.max(dist, MIN_DIST), MAX_DIST);
-    // Logarithmic scale: slider 100 = close (MIN_DIST), slider 0 = far (MAX_DIST)
     const val = 100 - 100 * (Math.log(dist / MIN_DIST) / Math.log(MAX_DIST / MIN_DIST));
     zoomSlider.value = Math.min(Math.max(val, 0), 100);
 }
@@ -117,9 +162,12 @@ function setZoomFromSlider(sliderVal) {
     orbit.update();
 }
 
-zoomSlider.addEventListener('input', (e) => setZoomFromSlider(e.target.value));
+if (zoomSlider) {
+    zoomSlider.addEventListener('input', (e) => setZoomFromSlider(e.target.value));
+}
 
 document.getElementById('btn-zoom-in')?.addEventListener('click', () => {
+    if (!zoomSlider) return;
     const currentVal = parseFloat(zoomSlider.value);
     const newVal = Math.min(currentVal + 12, 100);
     zoomSlider.value = newVal;
@@ -127,13 +175,14 @@ document.getElementById('btn-zoom-in')?.addEventListener('click', () => {
 });
 
 document.getElementById('btn-zoom-out')?.addEventListener('click', () => {
+    if (!zoomSlider) return;
     const currentVal = parseFloat(zoomSlider.value);
     const newVal = Math.max(currentVal - 12, 0);
     zoomSlider.value = newVal;
     setZoomFromSlider(newVal);
 });
 
-document.getElementById('btn-cam-lens').addEventListener('click', () => {
+document.getElementById('btn-cam-lens')?.addEventListener('click', () => {
     const currentPos = camera.position.clone();
     const currentTarget = orbit.target.clone();
     const dist = currentPos.distanceTo(currentTarget);
@@ -153,7 +202,8 @@ document.getElementById('btn-cam-lens').addEventListener('click', () => {
     orbit.update();
     
     transformControl.camera = camera;
-    document.getElementById('btn-cam-lens').style.color = camera.isOrthographicCamera ? '#3b82f6' : '#9ca3af';
+    const lensBtn = document.getElementById('btn-cam-lens');
+    if (lensBtn) lensBtn.style.color = camera.isOrthographicCamera ? '#3b82f6' : '#9ca3af';
     syncZoomSlider();
 });
 
@@ -205,14 +255,14 @@ function fitCameraToObject() {
 }
 
 document.getElementById('btn-cam-fit')?.addEventListener('click', fitCameraToObject);
-document.getElementById('btn-cam-top').addEventListener('click', () => setCameraPreset(0, 360, 0, 0, 0, 0, 'btn-cam-top'));
-document.getElementById('btn-cam-front').addEventListener('click', () => setCameraPreset(0, 25, 360, 0, 25, 0, 'btn-cam-front'));
-document.getElementById('btn-cam-iso').addEventListener('click', () => setCameraPreset(220, 200, 220, 0, 25, 0, 'btn-cam-iso'));
+document.getElementById('btn-cam-top')?.addEventListener('click', () => setCameraPreset(0, 360, 0, 0, 0, 0, 'btn-cam-top'));
+document.getElementById('btn-cam-front')?.addEventListener('click', () => setCameraPreset(0, 25, 360, 0, 25, 0, 'btn-cam-front'));
+document.getElementById('btn-cam-iso')?.addEventListener('click', () => setCameraPreset(220, 200, 220, 0, 25, 0, 'btn-cam-iso'));
 
 
-// --- 2. Professional Gizmos ---
+// --- 2. Interactive Gizmos ---
 const transformControl = new TransformControls(camera, renderer.domElement);
-transformControl.size = 0.6; 
+transformControl.size = window.innerWidth <= 768 ? 0.85 : 0.6; 
 transformControl.space = 'local'; 
 
 transformControl.traverse((child) => {
@@ -237,17 +287,20 @@ scene.add(transformControl);
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 
-wrapper.addEventListener('pointerdown', (event) => {
-    if (event.button !== 0 || event.target.tagName === 'BUTTON' || event.target.tagName === 'INPUT') return;
-    const rect = wrapper.getBoundingClientRect();
-    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-    
-    raycaster.setFromCamera(mouse, camera);
-    const intersects = raycaster.intersectObject(currentMesh, true);
-    if (intersects.length > 0) transformControl.attach(currentMesh);
-    else if (!transformControl.dragging) transformControl.detach();
-});
+if (wrapper) {
+    wrapper.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0 || event.target.tagName === 'BUTTON' || event.target.tagName === 'INPUT') return;
+        const rect = wrapper.getBoundingClientRect();
+        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObject(currentMesh, true);
+        if (intersects.length > 0) transformControl.attach(currentMesh);
+        else if (!transformControl.dragging) transformControl.detach();
+    });
+}
+
 
 // --- 3. Lighting & Dynamic Build Plate ---
 scene.add(new THREE.AmbientLight(0xaaaaaa)); 
@@ -319,7 +372,7 @@ function generateGridTexture(bedX, bedY, visualSpacingMM, showNumbers) {
         
         let stepMultiplier = 1;
         while ((visualSpacingMM * stepMultiplier * scale) < 60) stepMultiplier++;
-        const unitMultiplier = unitSelect.value === 'in' ? (1 / 25.4) : 1;
+        const unitMultiplier = unitSelect && unitSelect.value === 'in' ? (1 / 25.4) : 1;
 
         for(let i = 1; i <= Math.floor((bedX / 2) / visualSpacingMM); i++) {
             if (i % stepMultiplier === 0) {
@@ -346,11 +399,12 @@ function generateGridTexture(bedX, bedY, visualSpacingMM, showNumbers) {
 }
 
 function updateBedGrid() {
-    let rawInput = parseFloat(gridSizeInput.value);
+    let rawInput = gridSizeInput ? parseFloat(gridSizeInput.value) : 10;
     if (isNaN(rawInput) || rawInput <= 0) rawInput = 10;
     
-    const visualSpacingMM = unitSelect.value === 'in' ? rawInput * 25.4 : rawInput;
-    const texture = generateGridTexture(printX, printY, visualSpacingMM, toggleGridNumbers.checked);
+    const visualSpacingMM = unitSelect && unitSelect.value === 'in' ? rawInput * 25.4 : rawInput;
+    const showNumbers = toggleGridNumbers ? toggleGridNumbers.checked : true;
+    const texture = generateGridTexture(printX, printY, visualSpacingMM, showNumbers);
     
     if (bedMesh) scene.remove(bedMesh);
     
@@ -362,7 +416,7 @@ function updateBedGrid() {
     bedMesh.receiveShadow = true;
     scene.add(bedMesh);
     
-    if (togglePrintVolume.checked) drawPrintVolume();
+    if (togglePrintVolume && togglePrintVolume.checked) drawPrintVolume();
 }
 
 function drawPrintVolume() {
@@ -373,15 +427,17 @@ function drawPrintVolume() {
     scene.add(printVolumeBox);
 }
 
-printerProfile.addEventListener('change', (e) => {
-    const dims = e.target.value.split(',').map(Number);
-    printX = dims[0]; printY = dims[1]; printZ = dims[2];
-    updateBedGrid();
-});
+if (printerProfile) {
+    printerProfile.addEventListener('change', (e) => {
+        const dims = e.target.value.split(',').map(Number);
+        printX = dims[0]; printY = dims[1]; printZ = dims[2];
+        updateBedGrid();
+    });
+}
 updateBedGrid();
 
-gridSizeInput.addEventListener('change', updateBedGrid);
-toggleGridNumbers.addEventListener('change', updateBedGrid);
+if (gridSizeInput) gridSizeInput.addEventListener('change', updateBedGrid);
+if (toggleGridNumbers) toggleGridNumbers.addEventListener('change', updateBedGrid);
 
 scene.add(currentMesh);
 
@@ -393,17 +449,19 @@ function animate() {
 animate();
 
 
-// --- 4. Scrubbing Labels & Resizing ---
+// --- 4. Touch-Friendly Scrubbing Labels (Pointer Events) ---
 document.querySelectorAll('.scrub-label').forEach(label => {
     let startX = 0;
     let startVal = 0;
     const input = document.getElementById(label.dataset.target);
+    if (!input) return;
     
-    label.addEventListener('mousedown', (e) => {
+    label.addEventListener('pointerdown', (e) => {
         startX = e.clientX;
         startVal = parseFloat(input.value) || 0;
+        try { label.setPointerCapture(e.pointerId); } catch(err) {}
         
-        const onMouseMove = (eMove) => {
+        const onPointerMove = (eMove) => {
             const deltaX = eMove.clientX - startX;
             const step = parseFloat(input.step) || 1;
             const change = Math.round((deltaX * 0.5) / step) * step; 
@@ -415,95 +473,288 @@ document.querySelectorAll('.scrub-label').forEach(label => {
             input.dispatchEvent(new Event('change'));
         };
         
-        const onMouseUp = () => {
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
+        const onPointerUp = (eUp) => {
+            label.removeEventListener('pointermove', onPointerMove);
+            label.removeEventListener('pointerup', onPointerUp);
+            label.removeEventListener('pointercancel', onPointerUp);
+            try { label.releasePointerCapture(e.pointerId); } catch(err) {}
             document.body.style.cursor = 'default';
         };
         
         document.body.style.cursor = 'ew-resize';
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
+        label.addEventListener('pointermove', onPointerMove);
+        label.addEventListener('pointerup', onPointerUp);
+        label.addEventListener('pointercancel', onPointerUp);
         e.preventDefault();
     });
 });
 
-const resizeObserver = new ResizeObserver(() => {
-    if (wrapper.clientWidth > 0 && wrapper.clientHeight > 0) {
-        if (camera.isPerspectiveCamera) {
-            camera.aspect = wrapper.clientWidth / wrapper.clientHeight;
-        } else {
-            camera.left = wrapper.clientWidth / -4;
-            camera.right = wrapper.clientWidth / 4;
-            camera.top = wrapper.clientHeight / 4;
-            camera.bottom = wrapper.clientHeight / -4;
-        }
-        camera.updateProjectionMatrix();
-        renderer.setSize(wrapper.clientWidth, wrapper.clientHeight);
+
+// --- 5. Responsive Layout, Resizer & Mobile Tabs ---
+function updateCanvasSize() {
+    if (!wrapper || wrapper.clientWidth === 0 || wrapper.clientHeight === 0) return;
+    const width = wrapper.clientWidth;
+    const height = wrapper.clientHeight;
+    
+    if (camera.isPerspectiveCamera) {
+        camera.aspect = width / height;
+    } else {
+        camera.left = width / -4;
+        camera.right = width / 4;
+        camera.top = height / 4;
+        camera.bottom = height / -4;
     }
+    camera.updateProjectionMatrix();
+    renderer.setSize(width, height);
+}
+
+const resizeObserver = new ResizeObserver(() => {
+    updateCanvasSize();
     if (editor) editor.layout();
 });
-resizeObserver.observe(wrapper);
-resizeObserver.observe(document.getElementById('editor-container'));
+if (wrapper) resizeObserver.observe(wrapper);
+const editorCont = document.getElementById('editor-container');
+if (editorCont) resizeObserver.observe(editorCont);
 
+// Desktop Resizer
 const resizer = document.getElementById('resizer');
-const leftPane = document.getElementById('left-pane');
 let isResizing = false;
 
-resizer.addEventListener('mousedown', () => {
-    isResizing = true;
-    resizer.classList.add('active');
-    document.body.style.cursor = 'col-resize';
-});
+if (resizer) {
+    resizer.addEventListener('mousedown', () => {
+        isResizing = true;
+        resizer.classList.add('active');
+        document.body.style.cursor = 'col-resize';
+    });
 
-document.addEventListener('mousemove', (e) => {
-    if (!isResizing) return;
-    let newWidth = e.clientX;
-    if (newWidth < 200) newWidth = 200;
-    if (newWidth > window.innerWidth - 400) newWidth = window.innerWidth - 400;
-    leftPane.style.width = newWidth + 'px';
-    leftPane.style.flex = 'none';
-});
+    document.addEventListener('mousemove', (e) => {
+        if (!isResizing || !leftPane) return;
+        let newWidth = e.clientX;
+        if (newWidth < 200) newWidth = 200;
+        if (newWidth > window.innerWidth - 320) newWidth = window.innerWidth - 320;
+        leftPane.style.width = newWidth + 'px';
+        leftPane.style.flex = 'none';
+    });
 
-document.addEventListener('mouseup', () => {
-    if (isResizing) {
-        isResizing = false;
-        resizer.classList.remove('active');
-        document.body.style.cursor = 'default';
-    }
-});
+    document.addEventListener('mouseup', () => {
+        if (isResizing) {
+            isResizing = false;
+            resizer.classList.remove('active');
+            document.body.style.cursor = 'default';
+        }
+    });
+}
 
-document.getElementById('btn-toggle-editor').addEventListener('click', () => {
+// Desktop Editor Collapse Toggle
+document.getElementById('btn-toggle-editor')?.addEventListener('click', () => {
+    if (!leftPane) return;
     leftPane.classList.toggle('collapsed');
     if (leftPane.classList.contains('collapsed')) {
         leftPane.style.display = 'none';
-        resizer.style.display = 'none';
+        if (resizer) resizer.style.display = 'none';
     } else {
         leftPane.style.display = 'flex';
-        resizer.style.display = 'flex';
+        if (resizer) resizer.style.display = 'flex';
     }
 });
+
+// Mobile Bottom Sheet controls
+function openBottomSheet() {
+    if (rightPanel) rightPanel.classList.add('sheet-open');
+    if (sheetBackdrop) sheetBackdrop.classList.add('active');
+}
+
+function closeBottomSheet() {
+    if (rightPanel) rightPanel.classList.remove('sheet-open');
+    if (sheetBackdrop) sheetBackdrop.classList.remove('active');
+}
+
+if (btnMobileSheet) btnMobileSheet.addEventListener('click', openBottomSheet);
+if (btnCloseSheet) btnCloseSheet.addEventListener('click', closeBottomSheet);
+if (sheetBackdrop) sheetBackdrop.addEventListener('click', closeBottomSheet);
+
+// Mobile Tabs Switching
+function switchMobileTab(tab) {
+    activeMobileTab = tab;
+    const isMobile = window.innerWidth <= 768;
+    if (!isMobile) return;
+    
+    if (tab === 'code') {
+        if (tabCode) tabCode.classList.add('active');
+        if (tabPreview) tabPreview.classList.remove('active');
+        if (leftPane) leftPane.classList.remove('mobile-hidden');
+        if (previewContainer) previewContainer.classList.add('mobile-hidden');
+        closeBottomSheet();
+        setTimeout(() => { if (editor) editor.layout(); }, 60);
+    } else {
+        if (tabCode) tabCode.classList.remove('active');
+        if (tabPreview) tabPreview.classList.add('active');
+        if (leftPane) leftPane.classList.add('mobile-hidden');
+        if (previewContainer) previewContainer.classList.remove('mobile-hidden');
+        setTimeout(() => { updateCanvasSize(); }, 60);
+    }
+}
+
+if (tabCode) tabCode.addEventListener('click', () => switchMobileTab('code'));
+if (tabPreview) tabPreview.addEventListener('click', () => switchMobileTab('preview'));
+
+function handleResponsiveLayout() {
+    const isMobile = window.innerWidth <= 768;
+    transformControl.size = isMobile ? 0.85 : 0.6;
+    
+    if (isMobile) {
+        switchMobileTab(activeMobileTab);
+    } else {
+        if (leftPane) leftPane.classList.remove('mobile-hidden');
+        if (previewContainer) previewContainer.classList.remove('mobile-hidden');
+        closeBottomSheet();
+    }
+    updateCanvasSize();
+    if (editor) editor.layout();
+}
+
+window.addEventListener('resize', handleResponsiveLayout);
+window.addEventListener('orientationchange', () => setTimeout(handleResponsiveLayout, 100));
+
+// Collapsible Console
+if (consoleHeader && consoleWrapper) {
+    consoleHeader.addEventListener('click', () => {
+        consoleWrapper.classList.toggle('collapsed');
+    });
+}
 
 // Drag & Drop Local File Loading
 const dragOverlay = document.getElementById('drag-overlay');
-window.addEventListener('dragover', (e) => { e.preventDefault(); dragOverlay.classList.add('active'); });
-window.addEventListener('dragleave', (e) => { if (e.relatedTarget === null) dragOverlay.classList.remove('active'); });
-window.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dragOverlay.classList.remove('active');
-    if (e.dataTransfer.files.length > 0) {
-        const file = e.dataTransfer.files[0];
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            if (editor) { editor.setValue(event.target.result); runWorker(); }
-        };
-        reader.readAsText(file);
+if (dragOverlay) {
+    window.addEventListener('dragover', (e) => { e.preventDefault(); dragOverlay.classList.add('active'); });
+    window.addEventListener('dragleave', (e) => { if (e.relatedTarget === null) dragOverlay.classList.remove('active'); });
+    window.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dragOverlay.classList.remove('active');
+        if (e.dataTransfer.files.length > 0) {
+            const file = e.dataTransfer.files[0];
+            const reader = new FileReader();
+            reader.onload = (event) => applyNewCode(event.target.result);
+            reader.readAsText(file);
+        }
+    });
+}
+
+
+// --- 6. AI Code Pasting, File Loading & Exporters ---
+function applyNewCode(code) {
+    if (editor) {
+        editor.setValue(code);
+    } else {
+        localStorage.setItem('openscad-studio-saved-code', code);
     }
-});
+    showToast("📋 Code loaded! Compiling...", "success");
+    runWorker();
+    
+    // On mobile, seamlessly switch to 3D View to watch it compile!
+    if (window.innerWidth <= 768) {
+        switchMobileTab('preview');
+    }
+}
+
+// Manual Paste Fallback Modal
+function openPasteModal() {
+    if (pasteModal) {
+        pasteModal.classList.add('active');
+        if (pasteInput) {
+            pasteInput.value = '';
+            setTimeout(() => pasteInput.focus(), 120);
+        }
+    }
+}
+
+function closePasteModal() {
+    if (pasteModal) pasteModal.classList.remove('active');
+}
+
+if (btnPasteCancel) btnPasteCancel.addEventListener('click', closePasteModal);
+if (btnPasteConfirm) {
+    btnPasteConfirm.addEventListener('click', () => {
+        if (pasteInput && pasteInput.value.trim()) {
+            applyNewCode(pasteInput.value);
+            closePasteModal();
+        }
+    });
+}
+
+async function handlePaste() {
+    try {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+            const text = await navigator.clipboard.readText();
+            if (text && text.trim()) {
+                applyNewCode(text);
+                return;
+            }
+        }
+        openPasteModal();
+    } catch (err) {
+        console.warn('Clipboard read error, showing paste modal:', err);
+        openPasteModal();
+    }
+}
+
+if (btnPaste) btnPaste.addEventListener('click', handlePaste);
+
+// Copy Code
+if (btnCopy) {
+    btnCopy.addEventListener('click', async () => {
+        if (!editor) return;
+        const code = editor.getValue();
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(code);
+            } else {
+                const ta = document.createElement('textarea');
+                ta.value = code;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+            }
+            showToast("📋 Code copied to clipboard!", "success");
+        } catch (err) {
+            showToast("❌ Could not copy: " + err.message, "error");
+        }
+    });
+}
+
+// Open File Picker (Mobile & Desktop)
+if (btnOpenFile && fileInput) {
+    btnOpenFile.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.onload = (event) => applyNewCode(event.target.result);
+            reader.readAsText(file);
+            fileInput.value = '';
+        }
+    });
+}
+
+// Render 3D Button
+if (btnRender) {
+    btnRender.addEventListener('click', () => {
+        runWorker();
+        if (window.innerWidth <= 768) {
+            switchMobileTab('preview');
+        }
+    });
+}
+
+// Quick Center on Bed
+if (btnMobileCenter) {
+    btnMobileCenter.addEventListener('click', () => centerMeshOnBed(false));
+}
 
 
-// --- 5. Dimension Math & UI Sync ---
-function getMultiplier() { return unitSelect.value === 'in' ? 25.4 : 1; }
+// --- 7. Dimension Math & UI Sync ---
+function getMultiplier() { return unitSelect && unitSelect.value === 'in' ? 25.4 : 1; }
 
 function radToDegNorm(rad) {
     let deg = THREE.MathUtils.radToDeg(rad) % 360;
@@ -545,12 +796,11 @@ function updateGizmoFromUI(changedAxis) {
     isUpdatingFromUI = true;
     const mult = getMultiplier();
     
-    // Prevent mathematical inversion if a user types 0
     let targetX = Math.max(0.01, (parseFloat(dimX.value) * mult) / baseSize.x);
     let targetY = Math.max(0.01, (parseFloat(dimZ.value) * mult) / baseSize.y);
     let targetZ = Math.max(0.01, (parseFloat(dimY.value) * mult) / baseSize.z);
 
-    if (uniformScale.checked) {
+    if (uniformScale && uniformScale.checked) {
         let scaleVal = targetX;
         if (changedAxis === 'y') scaleVal = targetY;
         if (changedAxis === 'z') scaleVal = targetZ;
@@ -624,36 +874,44 @@ document.getElementById('btn-rot-90z')?.addEventListener('click', () => {
     updateUIFromGizmo();
 });
 
-unitSelect.addEventListener('change', () => {
-    const newUnit = unitSelect.value;
-    if (currentUnit !== newUnit) {
-        if (newUnit === 'in') {
-            gridSizeInput.value = (parseFloat(gridSizeInput.value) / 25.4).toFixed(2);
-            gridSizeInput.step = "0.25";
-            if (posX) posX.step = "0.05";
-            if (posY) posY.step = "0.05";
-            if (posZ) posZ.step = "0.05";
-            if (dimX) dimX.step = "0.05";
-            if (dimY) dimY.step = "0.05";
-            if (dimZ) dimZ.step = "0.05";
-        } else {
-            gridSizeInput.value = Math.round(parseFloat(gridSizeInput.value) * 25.4);
-            gridSizeInput.step = "10";
-            if (posX) posX.step = "0.5";
-            if (posY) posY.step = "0.5";
-            if (posZ) posZ.step = "0.5";
-            if (dimX) dimX.step = "0.1";
-            if (dimY) dimY.step = "0.1";
-            if (dimZ) dimZ.step = "0.1";
+if (unitSelect) {
+    unitSelect.addEventListener('change', () => {
+        const newUnit = unitSelect.value;
+        if (currentUnit !== newUnit) {
+            if (newUnit === 'in') {
+                if (gridSizeInput) {
+                    gridSizeInput.value = (parseFloat(gridSizeInput.value) / 25.4).toFixed(2);
+                    gridSizeInput.step = "0.25";
+                }
+                if (posX) posX.step = "0.05";
+                if (posY) posY.step = "0.05";
+                if (posZ) posZ.step = "0.05";
+                if (dimX) dimX.step = "0.05";
+                if (dimY) dimY.step = "0.05";
+                if (dimZ) dimZ.step = "0.05";
+            } else {
+                if (gridSizeInput) {
+                    gridSizeInput.value = Math.round(parseFloat(gridSizeInput.value) * 25.4);
+                    gridSizeInput.step = "10";
+                }
+                if (posX) posX.step = "0.5";
+                if (posY) posY.step = "0.5";
+                if (posZ) posZ.step = "0.5";
+                if (dimX) dimX.step = "0.1";
+                if (dimY) dimY.step = "0.1";
+                if (dimZ) dimZ.step = "0.1";
+            }
+            currentUnit = newUnit;
         }
-        currentUnit = newUnit;
-    }
-    updateUIFromGizmo();
-    updateBedGrid();
-});
+        updateUIFromGizmo();
+        updateBedGrid();
+    });
+}
 
-// --- 6. Core Compilation Logic ---
+
+// --- 8. Core Compilation Logic ---
 function appendLog(text, type = "normal") {
+    if (!consoleEl) return;
     const div = document.createElement('div');
     div.innerText = text;
     div.className = type === "error" ? "log-error" : "log-success";
@@ -662,25 +920,32 @@ function appendLog(text, type = "normal") {
 }
 
 function runWorker() {
-    if (!editor) return; // Safeguard if triggered before editor initializes
+    if (!editor) return; 
     
     showLoading('Compiling Model...');
     if (worker) worker.terminate(); 
-    worker = new Worker('scad-worker.js?v=25', { type: 'module' });
+    worker = new Worker('scad-worker.js?v=26', { type: 'module' });
     
     worker.onerror = (err) => {
         hideLoading();
         appendLog(`❌ Worker error: ${err.message || 'Compilation crashed'}`, "error");
+        showToast("❌ Compilation crashed", "error");
     };
 
     worker.onmessage = (e) => {
         const { success, format, buffer, logs } = e.data;
         
-        consoleEl.innerHTML = ''; 
+        if (consoleEl) consoleEl.innerHTML = ''; 
         if (logs) logs.forEach(log => appendLog(log, success ? "normal" : "error"));
+
+        const codeBadge = document.getElementById('code-badge');
+        const previewBadge = document.getElementById('preview-badge');
 
         if (success) {
             appendLog("✅ Compilation successful.", "success");
+            if (codeBadge) codeBadge.className = 'tab-badge';
+            if (previewBadge) previewBadge.className = 'tab-badge';
+
             if (format === '3mf') {
                 hideLoading();
                 const blob = new Blob([buffer], { type: 'application/vnd.ms-3mfdocument' });
@@ -696,6 +961,8 @@ function runWorker() {
         } else {
             hideLoading();
             appendLog(`❌ Compilation failed`, "error");
+            if (codeBadge) codeBadge.className = 'tab-badge active';
+            showToast("❌ OpenSCAD Syntax Error. Check Console.", "error");
         }
     };
     worker.postMessage({ code: editor.getValue(), format: 'stl' });
@@ -716,7 +983,9 @@ function loadSTLToScene(buffer) {
         geometry.rotateX(-Math.PI / 2); 
         
         const material = new THREE.MeshStandardMaterial({ 
-            color: colorPicker.value, roughness: 0.4, metalness: 0.15 
+            color: colorPicker ? colorPicker.value : '#cbd5e1', 
+            roughness: 0.4, 
+            metalness: 0.15 
         });
         currentMesh = new THREE.Mesh(geometry, material);
         currentMesh.castShadow = true;
@@ -734,7 +1003,8 @@ function loadSTLToScene(buffer) {
         currentMesh.position.set(0, 0, 0); 
         scene.add(currentMesh);
         
-        if (document.getElementById('toggle-bounds').checked) {
+        const toggleBounds = document.getElementById('toggle-bounds');
+        if (toggleBounds && toggleBounds.checked) {
             boxHelper = new THREE.BoxHelper(currentMesh, 0x60a5fa);
             scene.add(boxHelper);
         }
@@ -744,33 +1014,35 @@ function loadSTLToScene(buffer) {
         
     } catch(err) {
         appendLog(`Render Error: ${err.message}`, "error");
+        showToast("Render Error: " + err.message, "error");
     }
 }
 
-togglePrintVolume.addEventListener('change', (e) => {
-    if (e.target.checked) drawPrintVolume();
-    else if (printVolumeBox) {
-        scene.remove(printVolumeBox);
-        printVolumeBox.geometry.dispose();
-        printVolumeBox.material.dispose();
-        printVolumeBox = null;
-    }
-});
+if (togglePrintVolume) {
+    togglePrintVolume.addEventListener('change', (e) => {
+        if (e.target.checked) drawPrintVolume();
+        else if (printVolumeBox) {
+            scene.remove(printVolumeBox);
+            printVolumeBox.geometry.dispose();
+            printVolumeBox.material.dispose();
+            printVolumeBox = null;
+        }
+    });
+}
 
 
-// --- Editor Toolbar & Auto-Save Logic ---
-document.getElementById('btn-undo').addEventListener('click', () => {
+// --- 9. Editor Toolbar & Bed Centering ---
+document.getElementById('btn-undo')?.addEventListener('click', () => {
     if (editor) editor.trigger('keyboard', 'undo', null);
 });
-document.getElementById('btn-redo').addEventListener('click', () => {
+document.getElementById('btn-redo')?.addEventListener('click', () => {
     if (editor) editor.trigger('keyboard', 'redo', null);
 });
-document.getElementById('btn-clear').addEventListener('click', () => {
-    if (editor && confirm("Clear all code in the editor? This cannot be undone.")) {
+document.getElementById('btn-clear')?.addEventListener('click', () => {
+    if (editor && confirm("Clear all code in the editor?")) {
         editor.setValue("");
     }
 });
-
 
 function centerMeshOnBed(resetRotation = false) {
     if (!currentMesh.geometry) return;
@@ -779,21 +1051,18 @@ function centerMeshOnBed(resetRotation = false) {
         currentMesh.rotation.set(0, 0, 0);
     }
     
-    // Compute current world-space bounding box
     const box = new THREE.Box3().setFromObject(currentMesh);
     const center = new THREE.Vector3();
     box.getCenter(center);
     
-    // Center horizontally on the bed (X and Z = 0)
     currentMesh.position.x -= center.x;
     currentMesh.position.z -= center.z;
-    
-    // Align base to bed surface (Y = 0)
     currentMesh.position.y -= box.min.y;
     
     if (boxHelper) boxHelper.update();
     transformControl.attach(currentMesh);
     updateUIFromGizmo();
+    showToast("🎯 Centered on build plate", "success", 1800);
 }
 
 const btnCenterMesh = document.getElementById('btn-center-mesh');
@@ -804,9 +1073,8 @@ if (btnCenterMesh) {
 function setGizmoMode(mode, btnId) {
     transformControl.setMode(mode);
     document.querySelectorAll('.gizmo-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById(btnId).classList.add('active');
+    document.getElementById(btnId)?.classList.add('active');
 
-    // Toggle context-relevant panels
     if (panelTranslate) panelTranslate.style.display = (mode === 'translate') ? 'block' : 'none';
     if (panelRotate) panelRotate.style.display = (mode === 'rotate') ? 'block' : 'none';
     if (panelScale) panelScale.style.display = (mode === 'scale') ? 'block' : 'none';
@@ -815,9 +1083,9 @@ function setGizmoMode(mode, btnId) {
     updateUIFromGizmo();
 }
 
-document.getElementById('btn-mode-translate').addEventListener('click', () => setGizmoMode('translate', 'btn-mode-translate'));
-document.getElementById('btn-mode-rotate').addEventListener('click', () => setGizmoMode('rotate', 'btn-mode-rotate'));
-document.getElementById('btn-mode-scale').addEventListener('click', () => setGizmoMode('scale', 'btn-mode-scale'));
+document.getElementById('btn-mode-translate')?.addEventListener('click', () => setGizmoMode('translate', 'btn-mode-translate'));
+document.getElementById('btn-mode-rotate')?.addEventListener('click', () => setGizmoMode('rotate', 'btn-mode-rotate'));
+document.getElementById('btn-mode-scale')?.addEventListener('click', () => setGizmoMode('scale', 'btn-mode-scale'));
 
 window.addEventListener('keydown', (e) => {
     if (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT') return;
@@ -828,11 +1096,13 @@ window.addEventListener('keydown', (e) => {
     if (e.key.toLowerCase() === 'f') fitCameraToObject();
 });
 
-colorPicker.addEventListener('input', (e) => {
-    if (currentMesh.material) currentMesh.material.color.set(e.target.value);
-});
+if (colorPicker) {
+    colorPicker.addEventListener('input', (e) => {
+        if (currentMesh.material) currentMesh.material.color.set(e.target.value);
+    });
+}
 
-document.getElementById('toggle-bounds').addEventListener('change', (e) => {
+document.getElementById('toggle-bounds')?.addEventListener('change', (e) => {
     if (e.target.checked) {
         boxHelper = new THREE.BoxHelper(currentMesh, 0x60a5fa);
         scene.add(boxHelper);
@@ -842,7 +1112,8 @@ document.getElementById('toggle-bounds').addEventListener('change', (e) => {
     }
 });
 
-// --- Exporters ---
+
+// --- 10. Unified Exporters (Bambu Studio & Web Share API) ---
 function downloadBlob(blob, filename) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -852,18 +1123,36 @@ function downloadBlob(blob, filename) {
     URL.revokeObjectURL(url);
 }
 
-document.getElementById('btn-export-stl').addEventListener('click', () => {
-    if (!currentMesh.geometry) return;
+async function exportSTL() {
+    if (!currentMesh.geometry) {
+        showToast("⚠️ No 3D model to export. Please compile first.", "error");
+        return;
+    }
+
     transformControl.detach();
     if (boxHelper) boxHelper.visible = false;
-    
-    const exporter = new STLExporter();
-    const result = exporter.parse(currentMesh, { binary: true });
-    downloadBlob(new Blob([result], { type: 'application/octet-stream' }), 'visual_layout.stl');
-    
-    if (boxHelper) boxHelper.visible = true;
-    transformControl.attach(currentMesh);
-});
+
+    try {
+        const exporter = new STLExporter();
+        const result = exporter.parse(currentMesh, { binary: true });
+        const blob = new Blob([result], { type: 'model/stl' });
+        const filename = 'model_' + new Date().toISOString().slice(0, 10).replace(/-/g, '') + '.stl';
+
+        // Direct download of the STL file
+        downloadBlob(blob, filename);
+        showToast("✅ STL file downloaded", "success");
+    } catch (err) {
+        showToast("❌ STL Export failed: " + err.message, "error");
+    } finally {
+        const toggleBounds = document.getElementById('toggle-bounds');
+        if (boxHelper && toggleBounds && toggleBounds.checked) boxHelper.visible = true;
+        transformControl.attach(currentMesh);
+    }
+}
+
+if (btnExportStl) btnExportStl.addEventListener('click', exportSTL);
+if (headerBtnExport) headerBtnExport.addEventListener('click', exportSTL);
+if (btnMobileExport) btnMobileExport.addEventListener('click', exportSTL);
 
 const btnExport3mf = document.getElementById('btn-export-3mf');
 if (btnExport3mf) {
@@ -883,31 +1172,50 @@ if (btnExport3mf) {
     });
 }
 
-// --- Monaco Editor & Initialization ---
+
+// --- 11. Monaco Editor & Initialization ---
 require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }});
 require(['vs/editor/editor.main'], function() {
     
     const LOCAL_STORAGE_KEY = 'openscad-studio-saved-code';
     const savedCode = localStorage.getItem(LOCAL_STORAGE_KEY);
-    const defaultCode = `// Parametric Twisted Hex Cup\n// Drag & Drop a local .scad file to load it instantly.\n\nheight = 45;\nradius = 24;\nwall = 2.5;\ntwist_deg = 90;\nsides = 6;\n\n$fn = 60;\neps = 0.01; // Microscopic overlap to prevent manifold errors\n\nunion() {\n    // 1. Solid floor\n    cylinder(h = wall + eps, r = radius, $fn = sides);\n\n    // 2. Hollow twisted walls\n    translate([0, 0, wall])\n        linear_extrude(height = height - wall, twist = twist_deg, slices = 60)\n            difference() {\n                circle(r = radius, $fn = sides);\n                circle(r = radius - wall, $fn = sides);\n            }\n}`;
+    const defaultCode = `// Parametric Twisted Hex Cup\n// Drag & Drop a local .scad file or tap Paste to load.\n\nheight = 45;\nradius = 24;\nwall = 2.5;\ntwist_deg = 90;\nsides = 6;\n\n$fn = 60;\neps = 0.01; // Microscopic overlap to prevent manifold errors\n\nunion() {\n    // 1. Solid floor\n    cylinder(h = wall + eps, r = radius, $fn = sides);\n\n    // 2. Hollow twisted walls\n    translate([0, 0, wall])\n        linear_extrude(height = height - wall, twist = twist_deg, slices = 60)\n            difference() {\n                circle(r = radius, $fn = sides);\n                circle(r = radius - wall, $fn = sides);\n            }\n}`;
 
     const oldDefaultPattern = 'difference() {\n    cube([40, 40, 20], center=true);';
     const initialCode = (savedCode === null || savedCode.includes(oldDefaultPattern)) ? defaultCode : savedCode;
 
+    const isMobileDevice = window.innerWidth <= 768;
     editor = monaco.editor.create(document.getElementById('editor-container'), {
         value: initialCode,
-        language: 'cpp', theme: 'vs-dark', minimap: { enabled: false }, fontSize: 14
+        language: 'cpp', 
+        theme: 'vs-dark', 
+        minimap: { enabled: false }, 
+        fontSize: isMobileDevice ? 12 : 14,
+        automaticLayout: true,
+        wordWrap: 'on',
+        lineNumbersMinChars: isMobileDevice ? 2 : 3,
+        folding: !isMobileDevice,
+        glyphMargin: false,
+        lineDecorationsWidth: isMobileDevice ? 4 : 10,
+        scrollBeyondLastLine: false,
+        scrollbar: {
+            verticalScrollbarSize: isMobileDevice ? 6 : 10,
+            horizontalScrollbarSize: isMobileDevice ? 6 : 10
+        }
     });
 
+    handleResponsiveLayout();
     runWorker(); 
     let compileTimeout;
     
     editor.onDidChangeModelContent(() => {
         localStorage.setItem(LOCAL_STORAGE_KEY, editor.getValue());
         
-        saveStatus.style.opacity = 1;
-        clearTimeout(saveTimeout);
-        saveTimeout = setTimeout(() => { saveStatus.style.opacity = 0; }, 1500);
+        if (saveStatus) {
+            saveStatus.style.opacity = 1;
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(() => { saveStatus.style.opacity = 0; }, 1500);
+        }
 
         clearTimeout(compileTimeout);
         compileTimeout = setTimeout(runWorker, 800); 
